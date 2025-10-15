@@ -2,8 +2,8 @@
 session_start();
 
 // --- Enkel inloggning ---
-$USERNAME = "admin";
-$PASSWORD = "losenord"; // ändra detta!
+$USERNAME = "sweet";
+$PASSWORD = "bales"; // ändra detta!
 
 // Automatisk inloggning via cookie
 if (!isset($_SESSION['user']) && isset($_COOKIE['hayuser'])) {
