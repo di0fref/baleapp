@@ -1,3 +1,5 @@
 haybales.db
 uploads/*
 .idea/
+vendor/*
+last_email_sent.txt
