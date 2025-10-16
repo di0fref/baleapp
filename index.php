@@ -3,11 +3,61 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 // Höbalsapp v1.1 – flera admin, bilder, anteckningar, smarta notifieringar, mörkt läge
 $db = new PDO('sqlite:' . __DIR__ . '/haybales.db');
+
 $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-$db->exec("CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT UNIQUE,password TEXT)");
-$db->exec("CREATE TABLE IF NOT EXISTS deliveries(id INTEGER PRIMARY KEY AUTOINCREMENT,supplier TEXT,delivery_date TEXT,num_bales INTEGER,paid INTEGER DEFAULT 0,invoice_file TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP)");
-$db->exec("CREATE TABLE IF NOT EXISTS bales(id INTEGER PRIMARY KEY AUTOINCREMENT,delivery_id INTEGER,status TEXT,is_bad INTEGER DEFAULT 0,is_reimbursed INTEGER DEFAULT 0,open_date TEXT,close_date TEXT,reimbursed_date TEXT,photo TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(delivery_id) REFERENCES deliveries(id))");
+
+// === Automatiska migrationer ===
+$db->exec("PRAGMA foreign_keys = ON;");
+$db->exec("CREATE TABLE IF NOT EXISTS migrations(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TEXT DEFAULT CURRENT_TIMESTAMP)");
+
+function runMigration($db, $name, $sql) {
+    $exists = $db->prepare("SELECT 1 FROM migrations WHERE name=?");
+    $exists->execute([$name]);
+    if(!$exists->fetch()) {
+        $db->exec($sql);
+        $stmt = $db->prepare("INSERT INTO migrations(name) VALUES(?)");
+        $stmt->execute([$name]);
+        echo "[Migration] $name applied\n";
+    }
+}
+
+// Kör migrationer
+runMigration($db, 'create_users', "
+  CREATE TABLE IF NOT EXISTS users(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    password TEXT
+  )
+");
+runMigration($db, 'create_deliveries', "
+  CREATE TABLE IF NOT EXISTS deliveries(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    supplier TEXT,
+    delivery_date TEXT,
+    num_bales INTEGER,
+    paid INTEGER DEFAULT 0,
+    invoice_file TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+");
+runMigration($db, 'create_bales', "
+  CREATE TABLE IF NOT EXISTS bales(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    delivery_id INTEGER,
+    status TEXT,
+    is_bad INTEGER DEFAULT 0,
+    is_reimbursed INTEGER DEFAULT 0,
+    open_date TEXT,
+    close_date TEXT,
+    reimbursed_date TEXT,
+    photo TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(delivery_id) REFERENCES deliveries(id)
+  )
+");
+
 $uCount = $db->query("SELECT COUNT(*) FROM users")->fetchColumn();
+
 if (!$uCount) {
     $db->exec("INSERT INTO users(username,password)VALUES('sweet','bales')");
 }
