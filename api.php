@@ -277,5 +277,27 @@ if ($a==='generate_full_report'){
     ]);
     exit;
 }
+if ($a === 'list_deliveries') {
+    $deliveries = $db->query("SELECT * FROM deliveries ORDER BY id DESC")->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($deliveries as &$d) {
+        $stats = $db->query("SELECT status,is_bad,is_reimbursed FROM bales WHERE delivery_id={$d['id']}")->fetchAll(PDO::FETCH_ASSOC);
+        $d['stats'] = [
+            'total' => count($stats),
+            'open' => count(array_filter($stats, fn($x)=>$x['status']=='open')),
+            'bad' => count(array_filter($stats, fn($x)=>$x['is_bad'])),
+            'unreimbursed' => count(array_filter($stats, fn($x)=>$x['is_bad']&&!$x['is_reimbursed']))
+        ];
+    }
+    echo json_encode(['success'=>true,'deliveries'=>$deliveries]);
+    exit;
+}
+
+if ($a === 'get_delivery') {
+    $id = (int)$_POST['id'];
+    $delivery = $db->query("SELECT * FROM deliveries WHERE id=$id")->fetch(PDO::FETCH_ASSOC);
+    $bales = $db->query("SELECT * FROM bales WHERE delivery_id=$id ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
+    echo json_encode(['success'=>true,'delivery'=>$delivery,'bales'=>$bales]);
+    exit;
+}
 
 echo json_encode(['success'=>false,'msg'=>'Unknown']);
