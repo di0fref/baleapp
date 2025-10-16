@@ -4,33 +4,20 @@ ini_set('display_errors', 1);
 // Höbalsapp v1.1 – flera admin, bilder, anteckningar, smarta notifieringar, mörkt läge
 $db = new PDO('sqlite:' . __DIR__ . '/haybales.db');
 
-$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-// === Automatiska migrationer ===
+// === Enkel automatisk migration ===
 $db->exec("PRAGMA foreign_keys = ON;");
-$db->exec("CREATE TABLE IF NOT EXISTS migrations(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TEXT DEFAULT CURRENT_TIMESTAMP)");
 
-function runMigration($db, $name, $sql) {
-    $exists = $db->prepare("SELECT 1 FROM migrations WHERE name=?");
-    $exists->execute([$name]);
-    if(!$exists->fetch()) {
-        $db->exec($sql);
-        $stmt = $db->prepare("INSERT INTO migrations(name) VALUES(?)");
-        $stmt->execute([$name]);
-        echo "[Migration] $name applied\n";
+function ensureColumn($db, $table, $column, $definition) {
+    $cols = array_column($db->query("PRAGMA table_info($table)")->fetchAll(PDO::FETCH_ASSOC), 'name');
+    if (!in_array($column, $cols)) {
+        $db->exec("ALTER TABLE $table ADD COLUMN $column $definition");
     }
 }
 
-// Kör migrationer
-runMigration($db, 'create_users', "
-  CREATE TABLE IF NOT EXISTS users(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE,
-    password TEXT
-  )
-");
-runMigration($db, 'create_deliveries', "
-  CREATE TABLE IF NOT EXISTS deliveries(
+// leveranser
+$tables = $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='deliveries'")->fetch();
+if (!$tables) {
+    $db->exec("CREATE TABLE deliveries(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     supplier TEXT,
     delivery_date TEXT,
@@ -38,10 +25,13 @@ runMigration($db, 'create_deliveries', "
     paid INTEGER DEFAULT 0,
     invoice_file TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
-  )
-");
-runMigration($db, 'create_bales', "
-  CREATE TABLE IF NOT EXISTS bales(
+  )");
+}
+
+// balar
+$tables = $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='bales'")->fetch();
+if (!$tables) {
+    $db->exec("CREATE TABLE bales(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     delivery_id INTEGER,
     status TEXT,
@@ -53,8 +43,35 @@ runMigration($db, 'create_bales', "
     photo TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(delivery_id) REFERENCES deliveries(id)
-  )
-");
+  )");
+}
+
+// användare
+$tables = $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")->fetch();
+if (!$tables) {
+    $db->exec("CREATE TABLE users(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    password TEXT
+  )");
+}
+
+// kolla saknade kolumner och lägg till om de inte finns
+ensureColumn($db, 'deliveries', 'paid', 'INTEGER DEFAULT 0');
+ensureColumn($db, 'deliveries', 'invoice_file', 'TEXT');
+ensureColumn($db, 'deliveries', 'num_bales', 'INTEGER DEFAULT 0');
+ensureColumn($db, 'bales', 'status', 'TEXT');
+ensureColumn($db, 'bales', 'is_bad', 'INTEGER DEFAULT 0');
+ensureColumn($db, 'bales', 'is_reimbursed', 'INTEGER DEFAULT 0');
+ensureColumn($db, 'bales', 'open_date', 'TEXT');
+ensureColumn($db, 'bales', 'close_date', 'TEXT');
+ensureColumn($db, 'bales', 'reimbursed_date', 'TEXT');
+ensureColumn($db, 'bales', 'photo', 'TEXT');
+
+//$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+//$db->exec("CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT UNIQUE,password TEXT)");
+//$db->exec("CREATE TABLE IF NOT EXISTS deliveries(id INTEGER PRIMARY KEY AUTOINCREMENT,supplier TEXT,delivery_date TEXT,num_bales INTEGER,paid INTEGER DEFAULT 0,invoice_file TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP)");
+//$db->exec("CREATE TABLE IF NOT EXISTS bales(id INTEGER PRIMARY KEY AUTOINCREMENT,delivery_id INTEGER,status TEXT,is_bad INTEGER DEFAULT 0,is_reimbursed INTEGER DEFAULT 0,open_date TEXT,close_date TEXT,reimbursed_date TEXT,photo TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(delivery_id) REFERENCES deliveries(id))");
 
 $uCount = $db->query("SELECT COUNT(*) FROM users")->fetchColumn();
 
