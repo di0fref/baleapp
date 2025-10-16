@@ -7,7 +7,8 @@ $db = new PDO('sqlite:' . __DIR__ . '/haybales.db');
 // === Enkel automatisk migration ===
 $db->exec("PRAGMA foreign_keys = ON;");
 
-function ensureColumn($db, $table, $column, $definition) {
+function ensureColumn($db, $table, $column, $definition)
+{
     $cols = array_column($db->query("PRAGMA table_info($table)")->fetchAll(PDO::FETCH_ASSOC), 'name');
     if (!in_array($column, $cols)) {
         $db->exec("ALTER TABLE $table ADD COLUMN $column $definition");
@@ -70,11 +71,8 @@ ensureColumn($db, 'bales', 'photo', 'TEXT');
 ensureColumn($db, 'bales', 'opened_by', 'TEXT');
 ensureColumn($db, 'bales', 'closed_by', 'TEXT');
 ensureColumn($db, 'bales', 'marked_bad_by', 'TEXT');
-
-//$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-//$db->exec("CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT UNIQUE,password TEXT)");
-//$db->exec("CREATE TABLE IF NOT EXISTS deliveries(id INTEGER PRIMARY KEY AUTOINCREMENT,supplier TEXT,delivery_date TEXT,num_bales INTEGER,paid INTEGER DEFAULT 0,invoice_file TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP)");
-//$db->exec("CREATE TABLE IF NOT EXISTS bales(id INTEGER PRIMARY KEY AUTOINCREMENT,delivery_id INTEGER,status TEXT,is_bad INTEGER DEFAULT 0,is_reimbursed INTEGER DEFAULT 0,open_date TEXT,close_date TEXT,reimbursed_date TEXT,photo TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(delivery_id) REFERENCES deliveries(id))");
+ensureColumn($db, 'deliveries', 'price', 'REAL DEFAULT 0');
+ensureColumn($db, 'deliveries', 'weight', 'REAL DEFAULT 0');
 
 $uCount = $db->query("SELECT COUNT(*) FROM users")->fetchColumn();
 
@@ -129,6 +127,58 @@ if (!isset($_SESSION['user'])):?>
 /* ====== AJAX API ====== */
 if (isset($_POST['action'])) {
     $a = $_POST['action'];
+
+    if ($a === 'predict_costs') {
+        // Genomsnittligt pris per bal (pris / antal)
+        $avgPrice = $db->query("
+        SELECT AVG(price / NULLIF(num_bales,0)) 
+        FROM deliveries 
+        WHERE num_bales > 0
+    ")->fetchColumn() ?: 0;
+
+        // Antal öppnade balar senaste 30 dagar
+        $openedCount = (int)$db->query("
+        SELECT COUNT(*) FROM bales 
+        WHERE open_date IS NOT NULL 
+          AND date(open_date) >= date('now','-30 day')
+    ")->fetchColumn();
+
+        $rate = $openedCount / 30; // balar/dag
+        $remaining = (int)$db->query("SELECT COUNT(*) FROM bales WHERE open_date IS NULL")->fetchColumn();
+
+        $forecast = [];
+        $today = new DateTime();
+
+        for ($m = 1; $m <= 6; $m++) {
+            $days = 30 * $m;
+            $used = $rate * $days;
+            $cost = $used * $avgPrice;
+            $month = (clone $today)->add(new DateInterval("P{$days}D"))->format('Y-m');
+            $forecast[] = ['month' => $month, 'bales_used' => round($used), 'estimated_cost' => round($cost, 2)];
+        }
+
+        echo json_encode([
+            'success' => true,
+            'avg_price' => round($avgPrice, 2),
+            'daily_rate' => round($rate, 2),
+            'forecast' => $forecast,
+            'remaining' => $remaining
+        ]);
+        exit;
+    }
+
+    if ($a === 'update_delivery_field') {
+        $id = (int)$_POST['id'];
+        $field = $_POST['field'];
+        $value = $_POST['value'];
+        if (!in_array($field, ['price', 'weight'])) exit;
+        $db->prepare("UPDATE deliveries SET $field=? WHERE id=?")->execute([$value, $id]);
+        echo json_encode(['success'=>true]);
+        exit;
+    }
+
+
+
     if ($a === 'add_delivery') {
         $st = $db->prepare("INSERT INTO deliveries(supplier,delivery_date,num_bales)VALUES(?,?,?)");
         $st->execute([$_POST['supplier'], $_POST['date'], $_POST['bales']]);
@@ -169,25 +219,27 @@ if (isset($_POST['action'])) {
     }
     $user = $_SESSION['user'] ?? 'okänd';
 
-    if($a==='update_bale_status'){
-        $id=(int)$_POST['id']; $s=$_POST['status'];
-        if($s==='open')
-            $db->prepare("UPDATE bales SET status='open', open_date=COALESCE(open_date,date('now')), closed_by=null, close_date=NULL, opened_by=? WHERE id=?")->execute([$user,$id]);
-        elseif($s==='closed')
-            $db->prepare("UPDATE bales SET status='closed', close_date=COALESCE(close_date,date('now')), closed_by=? WHERE id=?")->execute([$user,$id]);
+    if ($a === 'update_bale_status') {
+        $id = (int)$_POST['id'];
+        $s = $_POST['status'];
+        if ($s === 'open')
+            $db->prepare("UPDATE bales SET status='open', open_date=COALESCE(open_date,date('now')), closed_by=null, close_date=NULL, opened_by=? WHERE id=?")->execute([$user, $id]);
+        elseif ($s === 'closed')
+            $db->prepare("UPDATE bales SET status='closed', close_date=COALESCE(close_date,date('now')), closed_by=? WHERE id=?")->execute([$user, $id]);
         else
             $db->prepare("UPDATE bales SET status=NULL, open_date=NULL, close_date=NULL WHERE id=?")->execute([$id]);
-        echo json_encode(['success'=>true]); exit;
+        echo json_encode(['success' => true]);
+        exit;
     }
 
-    if($a==='toggle_flag'){
+    if ($a === 'toggle_flag') {
         $id = (int)$_POST['id'];
         $flag = $_POST['flag'];
         $value = (int)$_POST['value'];
         $user = $_SESSION['user'] ?? 'okänd';
 
-        if($flag === 'is_bad') {
-            if($value) {
+        if ($flag === 'is_bad') {
+            if ($value) {
                 // Markera som felaktig – rensa status & datum
                 $db->prepare("UPDATE bales SET is_bad=1, marked_bad_by=?, status=NULL, open_date=NULL, close_date=NULL WHERE id=?")
                     ->execute([$user, $id]);
@@ -196,9 +248,8 @@ if (isset($_POST['action'])) {
                 $db->prepare("UPDATE bales SET is_bad=0, marked_bad_by=NULL WHERE id=?")
                     ->execute([$id]);
             }
-        }
-        elseif($flag === 'is_reimbursed') {
-            if($value) {
+        } elseif ($flag === 'is_reimbursed') {
+            if ($value) {
                 // Markera som ersatt
                 $db->prepare("UPDATE bales SET is_reimbursed=1, reimbursed_date=date('now') WHERE id=?")
                     ->execute([$id]);
@@ -209,7 +260,7 @@ if (isset($_POST['action'])) {
             }
         }
 
-        echo json_encode(['success'=>true]);
+        echo json_encode(['success' => true]);
         exit;
     }
 
@@ -262,49 +313,54 @@ if (isset($_POST['action'])) {
         echo json_encode(['success' => true, 'limitDays' => $limit, 'alerts' => $alerts]);
         exit;
     }
-    if($a==='generate_full_report'){
-        $avgQ=$db->query("SELECT open_date,close_date FROM bales WHERE open_date IS NOT NULL AND close_date IS NOT NULL")->fetchAll(PDO::FETCH_ASSOC);
-        $totDays=0;$count=0;
-        foreach($avgQ as $x){$totDays+=(new DateTime($x['open_date']))->diff(new DateTime($x['close_date']))->days;$count++;}
-        $avg=$count?round($totDays/$count,1):0;
+    if ($a === 'generate_full_report') {
+        $avgQ = $db->query("SELECT open_date,close_date FROM bales WHERE open_date IS NOT NULL AND close_date IS NOT NULL")->fetchAll(PDO::FETCH_ASSOC);
+        $totDays = 0;
+        $count = 0;
+        foreach ($avgQ as $x) {
+            $totDays += (new DateTime($x['open_date']))->diff(new DateTime($x['close_date']))->days;
+            $count++;
+        }
+        $avg = $count ? round($totDays / $count, 1) : 0;
 
-        $bad=$db->query("SELECT b.id AS bale_id,d.delivery_date,d.supplier FROM bales b JOIN deliveries d ON d.id=b.delivery_id WHERE b.is_bad=1 AND b.is_reimbursed=0 ORDER BY d.delivery_date DESC")->fetchAll(PDO::FETCH_ASSOC);
+        $bad = $db->query("SELECT b.id AS bale_id,d.delivery_date,d.supplier FROM bales b JOIN deliveries d ON d.id=b.delivery_id WHERE b.is_bad=1 AND b.is_reimbursed=0 ORDER BY d.delivery_date DESC")->fetchAll(PDO::FETCH_ASSOC);
 
-        $period=30;
-        $opened=$db->query("SELECT open_date FROM bales WHERE open_date IS NOT NULL AND date(open_date)>=date('now','-{$period} day')")->fetchAll(PDO::FETCH_ASSOC);
-        $openCount=count($opened);
-        $rate=$openCount/max(1,$period);
-        $remaining=(int)$db->query("SELECT COUNT(*) FROM bales WHERE open_date IS NULL")->fetchColumn();
-        $daysLeft=$rate>0?round($remaining/$rate,1):null;
-        $forecastDate=$daysLeft?(new DateTime())->add(new DateInterval('P'.ceil($daysLeft).'D'))->format('Y-m-d'):null;
+        $period = 30;
+        $opened = $db->query("SELECT open_date FROM bales WHERE open_date IS NOT NULL AND date(open_date)>=date('now','-{$period} day')")->fetchAll(PDO::FETCH_ASSOC);
+        $openCount = count($opened);
+        $rate = $openCount / max(1, $period);
+        $remaining = (int)$db->query("SELECT COUNT(*) FROM bales WHERE open_date IS NULL")->fetchColumn();
+        $daysLeft = $rate > 0 ? round($remaining / $rate, 1) : null;
+        $forecastDate = $daysLeft ? (new DateTime())->add(new DateInterval('P' . ceil($daysLeft) . 'D'))->format('Y-m-d') : null;
 
         echo json_encode([
-            'success'=>true,
-            'avgDays'=>$avg,
-            'bad'=>$bad,
-            'period'=>$period,
-            'openedCount'=>$openCount,
-            'dailyRate'=>round($rate,2),
-            'remaining'=>$remaining,
-            'daysLeft'=>$daysLeft,
-            'forecastDate'=>$forecastDate
+            'success' => true,
+            'avgDays' => $avg,
+            'bad' => $bad,
+            'period' => $period,
+            'openedCount' => $openCount,
+            'dailyRate' => round($rate, 2),
+            'remaining' => $remaining,
+            'daysLeft' => $daysLeft,
+            'forecastDate' => $forecastDate
         ]);
         exit;
     }
-    if($a==='delete_photo'){
+    if ($a === 'delete_photo') {
         $id = (int)$_POST['id'];
         $photo = $db->query("SELECT photo FROM bales WHERE id=$id")->fetchColumn();
-        if($photo && file_exists(__DIR__.'/'.$photo)){
-            unlink(__DIR__.'/'.$photo);
+        if ($photo && file_exists(__DIR__ . '/' . $photo)) {
+            unlink(__DIR__ . '/' . $photo);
         }
         $db->prepare("UPDATE bales SET photo=NULL WHERE id=?")->execute([$id]);
-        echo json_encode(['success'=>true]);
+        echo json_encode(['success' => true]);
         exit;
     }
 
     echo json_encode(['success' => false, 'msg' => 'Unknown']);
     exit;
 }
+
 /* ====== PAGE ====== */
 $dId = isset($_GET['delivery']) ? (int)$_GET['delivery'] : null; ?>
 <!DOCTYPE html>
@@ -327,6 +383,8 @@ $dId = isset($_GET['delivery']) ? (int)$_GET['delivery'] : null; ?>
         <h1 class="text-2xl font-bold">🌾 Höbalsapp</h1>
         <div class="flex items-center gap-2">
             <button onclick="generateReport()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-3 py-1 rounded">📊 Rapport</button>
+            <button onclick="showCostPrediction()" class="bg-yellow-600 hover:bg-yellow-700 text-white text-sm px-3 py-1 rounded">💰 Prognos</button>
+
             <button id="themeToggle" class="bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded">🌙</button>
             <a href="?logout" class="bg-red-600 hover:bg-red-700 text-white text-sm px-3 py-1 rounded">Logga ut</a>
         </div>
@@ -370,7 +428,7 @@ $dId = isset($_GET['delivery']) ? (int)$_GET['delivery'] : null; ?>
                     <td class="p-2 text-center"><input type="checkbox" <?= $d['paid'] ? 'checked' : '' ?> onchange="updateDelivery(<?= $d['id'] ?>,this.checked?1:0)"></td>
                     <td class="p-2 text-center"><?php if ($d['invoice_file']): ?><a href="<?= $d['invoice_file'] ?>" target="_blank" class="text-blue-600 underline">Visa</a>
                         <button onclick="deleteInvoice(<?= $d['id'] ?>)" class="text-xs text-red-600">🗑️</button><?php else: ?>
-                            <button onclick="uploadInvoice(<?= $d['id'] ?>)" class="text-sm bg-gray-200 px-2 py-1 rounded dark:bg-blue-700 dark:hover:bg-blue-600">📎 Ladda upp</button><?php endif; ?></td>
+                        <button onclick="uploadInvoice(<?= $d['id'] ?>)" class="text-sm bg-gray-200 px-2 py-1 rounded dark:bg-blue-700 dark:hover:bg-blue-600">📎 Ladda upp</button><?php endif; ?></td>
                     <td class="p-2 text-center"><a href="?delivery=<?= $d['id'] ?>" class="text-blue-600 hover:underline">Visa →</a></td></tr><?php endforeach; ?></tbody>
             </table>
         </div>
@@ -384,101 +442,163 @@ $dId = isset($_GET['delivery']) ? (int)$_GET['delivery'] : null; ?>
         $bad = count(array_filter($b, fn($x) => $x['is_bad'])); ?>
         <div class="bg-white dark:bg-gray-800 p-4 rounded shadow mb-6">
 
-    <a href="?" class="text-blue-600 hover:underline">&larr; Tillbaka</a>
-        <h2 class="text-xl font-semibold mb-2 mt-2">Balar för <?= htmlspecialchars($d['supplier']) ?> (<?= $d['delivery_date'] ?>)</h2>
+
+
+
+
+        <div class="my-2">
+        <a href="?" class="text-blue-600 hover:underline">&larr; Tillbaka</a>
+        </div>
+<!--        <h2 class="text-xl font-semibold mb-2 mt-2">Balar för --><?php //= htmlspecialchars($d['supplier']) ?><!-- (--><?php //= $d['delivery_date'] ?><!--)</h2>-->
+
+        <div class="bg-gray-100 dark:bg-gray-700 p-4 rounded mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <p><b>Leverantör:</b> <?= htmlspecialchars($d['supplier']) ?></p>
+                <p><b>Datum:</b> <?= htmlspecialchars($d['delivery_date']) ?></p>
+                <p><b>Antal balar:</b> <?= $d['num_bales'] ?></p>
+            </div>
+            <div>
+                <p><b>Pris:</b>
+                    <span class="editable-num cursor-pointer text-blue-600" data-id="<?=$d['id']?>" data-field="price">
+        <?= number_format($d['price'], 2) ?>
+      </span> kr
+                </p>
+                <p><b>Vikt:</b>
+                    <span class="editable-num cursor-pointer text-blue-600" data-id="<?=$d['id']?>" data-field="weight">
+        <?= number_format($d['weight'], 1) ?>
+      </span> kg
+                </p>
+                <p><b>Betald:</b>
+                    <input type="checkbox" <?= $d['paid'] ? 'checked' : '' ?> onchange="updateDelivery(<?= $d['id'] ?>,this.checked?1:0)">
+                </p>
+            </div>
+            <div>
+                <p><b>Faktura:</b>
+                    <?php if ($d['invoice_file']): ?>
+                        <a href="<?= $d['invoice_file'] ?>" target="_blank" class="text-blue-600 underline">Visa</a>
+                        <button onclick="deleteInvoice(<?= $d['id'] ?>)" class="text-xs text-red-600">🗑️</button>
+                    <?php else: ?>
+                        <button onclick="uploadInvoice(<?= $d['id'] ?>)" class="text-sm bg-gray-200 px-2 py-1 rounded dark:bg-blue-700 dark:hover:bg-blue-600">📎 Ladda upp</button>
+                    <?php endif; ?>
+                </p>
+                <p><b>Skapad:</b> <?= $d['created_at'] ?></p>
+            </div>
+        </div>
+
         <p class="mb-2 text-sm">Totalt: <?= $tot ?> • Öppna: <?= $open ?> • Stängda: <?= $closed ?> • Felaktiga: <?= $bad ?></p>
+
+
         <table class="min-w-full text-sm border dark:border-gray-700">
-        <thead class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-100 uppercase">
-        <tr>
-            <th class="p-2">#</th>
-            <th class="p-2">Status</th>
-            <th class="p-2">Öppnad</th>
-            <th class="p-2">Stängd</th>
-            <th class="p-2">Dagar</th>
-            <th class="p-2">Bild</th>
-            <th class="p-2">Åtgärder</th>
+            <thead class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-100 uppercase">
+            <tr>
+                <th class="p-2">#</th>
+                <th class="p-2">Status</th>
+                <th class="p-2">Öppnad</th>
+                <th class="p-2">Stängd</th>
+                <th class="p-2">Dagar</th>
+                <th class="p-2">Bild</th>
+                <th class="p-2">Åtgärder</th>
 
-        </thead>
-        <tbody>
-        <?php foreach ($b as $x):$days = '-';
-            if ($x['open_date']) {
-                $d1 = new DateTime($x['open_date']);
-                $d2 = $x['close_date'] ? new DateTime($x['close_date']) : new DateTime();
-                $days = $d1->diff($d2)->days . ' dagar';
-            } ?>
-            <tr class="border-t dark:border-gray-600">
-            <td class="p-2"><?= $x['id'] ?></td>
-            <td class="p-2"><?php if ($x['status']) {
-                    echo "<span class='px-2 py-1 text-xs rounded " . ($x['status'] == 'open' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800') . "'>" . ($x['status'] == 'open' ? 'Öppen' : 'Stängd') . "</span> ";
-                }
-                if ($x['is_bad']) {
-                    echo "<span class='px-2 py-1 text-xs rounded bg-red-100 text-red-800'>Felaktig</span> ";
-                }
-                if ($x['is_reimbursed']) {
-                    echo "<span class='px-2 py-1 text-xs rounded bg-yellow-100 text-yellow-800'>Ersatt</span> ";
-                } ?></td>
+            </thead>
+            <tbody>
+            <?php foreach ($b as $x):$days = '-';
+                if ($x['open_date']) {
+                    $d1 = new DateTime($x['open_date']);
+                    $d2 = $x['close_date'] ? new DateTime($x['close_date']) : new DateTime();
+                    $days = $d1->diff($d2)->days . ' dagar';
+                } ?>
+                <tr class="border-t dark:border-gray-600">
+                <td class="p-2"><?= $x['id'] ?></td>
+                <td class="p-2"><?php if ($x['status']) {
+                        echo "<span class='px-2 py-1 text-xs rounded " . ($x['status'] == 'open' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800') . "'>" . ($x['status'] == 'open' ? 'Öppen' : 'Stängd') . "</span> ";
+                    }
+                    if ($x['is_bad']) {
+                        echo "<span class='px-2 py-1 text-xs rounded bg-red-100 text-red-800'>Felaktig</span> ";
+                    }
+                    if ($x['is_reimbursed']) {
+                        echo "<span class='px-2 py-1 text-xs rounded bg-yellow-100 text-yellow-800'>Ersatt</span> ";
+                    } ?></td>
 
-            <td class="p-2">
-                <div class="flex items-center gap-1">
+                <td class="p-2">
+                    <div class="flex items-center gap-1">
     <span class="editable-date _text-blue-700 _underline cursor-pointer"
-          data-id="<?=$x['id']?>" data-field="open_date"
-          data-locked="<?=($x['status']=='open'||$x['status']=='closed')?'false':'true'?>">
-      <?=$x['open_date']?:'-'?>
+          data-id="<?= $x['id'] ?>" data-field="open_date"
+          data-locked="<?= ($x['status'] == 'open' || $x['status'] == 'closed') ? 'false' : 'true' ?>">
+      <?= $x['open_date'] ?: '-' ?>
     </span>
-                    <?php if($x['opened_by']): ?>
-                        <span class="text-xs text-gray-500 italic">(av <?=$x['opened_by']?>)</span>
-                    <?php endif; ?>
-                </div>
-            </td>
-
-            <td class="p-2">
-                <div class="flex items-center gap-1">
-    <span class="editable-date _text-blue-700 _underline cursor-pointer"
-          data-id="<?=$x['id']?>" data-field="close_date"
-          data-locked="<?=($x['status']=='open'||$x['status']=='closed')?'false':'true'?>">
-      <?=$x['close_date']?:'-'?>
-    </span>
-                    <?php if($x['closed_by']): ?>
-                        <span class="text-xs text-gray-500 italic">(av <?=$x['closed_by']?>)</span>
-                    <?php endif; ?>
-                </div>
-            </td>
-
-
-
-
-            <td class="p-2 text-center"><?= $days ?></td>
-            <td class="p-2 text-center">
-                <?php if(!empty($x['photo'])):?>
-                    <div class="flex flex-row items-center gap-1">
-                        <a href="<?=$x['photo']?>" target="_blank" class="text-blue-600 _text-xs underline">Visa bild</a>
-
-                        <button onclick="deletePhoto(<?=$x['id']?>)"
-                                class="text-red-600 hover:text-red-800 text-sm"
-                                title="Ta bort bild">🗑️</button>
-
+                        <?php if ($x['opened_by']): ?>
+                            <span class="text-xs text-gray-500 italic">(av <?= $x['opened_by'] ?>)</span>
+                        <?php endif; ?>
                     </div>
-                <?php else:?>
-                    <span class="text-gray-400 text-xs">-</span>
-                <?php endif;?>
+                </td>
 
-            </td>
-            <td class="p-2 flex flex-wrap gap-1 justify-center">
-                <button onclick="setStatus(<?=$x['id']?>,'open')" class="px-2 py-1 border_ rounded text-xs bg-gray-200 dark:bg-blue-700 dark:hover:bg-blue-600">Öppen</button>
-                <button onclick="setStatus(<?=$x['id']?>,'closed')" class="px-2 py-1 border_ rounded text-xs bg-gray-200 dark:bg-blue-700 dark:hover:bg-blue-600">Stängd</button>
-                <button onclick="toggleFlag(<?=$x['id']?>,'is_bad',<?=!$x['is_bad']?1:0?>)" class="px-2 py-1 border_ rounded text-xs bg-gray-200 dark:bg-blue-700 dark:hover:bg-blue-600">Felaktig</button>
-                <button onclick="toggleFlag(<?=$x['id']?>,'is_reimbursed',<?=!$x['is_reimbursed']?1:0?>)" class="px-2 py-1 _border rounded text-xs bg-gray-200 dark:bg-blue-700 dark:hover:bg-blue-600">Ersatt</button>
-                <button onclick="uploadPhoto(<?=$x['id']?>)" class="px-2 py-1 border_ rounded text-xs bg-gray-200 dark:bg-blue-700 dark:hover:bg-blue-600">📷</button>
+                <td class="p-2">
+                    <div class="flex items-center gap-1">
+    <span class="editable-date _text-blue-700 _underline cursor-pointer"
+          data-id="<?= $x['id'] ?>" data-field="close_date"
+          data-locked="<?= ($x['status'] == 'open' || $x['status'] == 'closed') ? 'false' : 'true' ?>">
+      <?= $x['close_date'] ?: '-' ?>
+    </span>
+                        <?php if ($x['closed_by']): ?>
+                            <span class="text-xs text-gray-500 italic">(av <?= $x['closed_by'] ?>)</span>
+                        <?php endif; ?>
+                    </div>
+                </td>
 
-            </td>
+
+                <td class="p-2 text-center"><?= $days ?></td>
+                <td class="p-2 text-center">
+                    <?php if (!empty($x['photo'])): ?>
+                        <div class="flex flex-row items-center gap-1">
+                            <a href="<?= $x['photo'] ?>" target="_blank" class="text-blue-600 _text-xs underline">Visa bild</a>
+
+                            <button onclick="deletePhoto(<?= $x['id'] ?>)"
+                                    class="text-red-600 hover:text-red-800 text-sm"
+                                    title="Ta bort bild">🗑️
+                            </button>
+
+                        </div>
+                    <?php else: ?>
+                        <span class="text-gray-400 text-xs">-</span>
+                    <?php endif; ?>
+
+                </td>
+                <td class="p-2 flex flex-wrap gap-1 justify-center">
+                    <button onclick="setStatus(<?= $x['id'] ?>,'open')" class="px-2 py-1 border_ rounded text-xs bg-gray-200 dark:bg-blue-700 dark:hover:bg-blue-600">Öppen</button>
+                    <button onclick="setStatus(<?= $x['id'] ?>,'closed')" class="px-2 py-1 border_ rounded text-xs bg-gray-200 dark:bg-blue-700 dark:hover:bg-blue-600">Stängd</button>
+                    <button onclick="toggleFlag(<?= $x['id'] ?>,'is_bad',<?= !$x['is_bad'] ? 1 : 0 ?>)" class="px-2 py-1 border_ rounded text-xs bg-gray-200 dark:bg-blue-700 dark:hover:bg-blue-600">Felaktig</button>
+                    <button onclick="toggleFlag(<?= $x['id'] ?>,'is_reimbursed',<?= !$x['is_reimbursed'] ? 1 : 0 ?>)" class="px-2 py-1 _border rounded text-xs bg-gray-200 dark:bg-blue-700 dark:hover:bg-blue-600">Ersatt</button>
+                    <button onclick="uploadPhoto(<?= $x['id'] ?>)" class="px-2 py-1 border_ rounded text-xs bg-gray-200 dark:bg-blue-700 dark:hover:bg-blue-600">📷</button>
+
+                </td>
 
 
 
-            </tr><?php endforeach; ?></tbody></table></div><?php endif; ?></div>
+                </tr><?php endforeach; ?></tbody>
+        </table></div><?php endif; ?></div>
 <div id="toastContainer" class="fixed bottom-4 right-4 flex flex-col gap-2 z-50 pointer-events-none"></div>
 
 <script>
     const tc = document.getElementById('toastContainer');
+
+    async function showCostPrediction(){
+        const fd=new FormData();
+        fd.append('action','predict_costs');
+        const r=await fetch('',{method:'POST',body:fd});
+        const j=await r.json();
+        if(!j.success){showToast('Kunde inte hämta prognos','error');return;}
+
+        let html=`<h3 class='text-xl font-semibold mb-2'>💰 Kostnadsprognos (6 månader)</h3>`;
+        html+=`<p><b>Genomsnittligt pris per bal:</b> ${j.avg_price} kr</p>`;
+        html+=`<p><b>Förbrukningstakt:</b> ${j.daily_rate} balar/dag</p>`;
+        html+=`<p><b>Kvar i lager:</b> ${j.remaining} balar</p>`;
+        html+=`<hr class='my-2'><table class='w-full text-sm border border-gray-300 dark:border-gray-700'><thead class='bg-gray-200 dark:bg-gray-800'><tr><th class='p-2'>Månad</th><th class='p-2'>Förväntade balar</th><th class='p-2'>Beräknad kostnad</th></tr></thead><tbody>`;
+        j.forecast.forEach(f=>{
+            html+=`<tr class='border-t dark:border-gray-700'><td class='p-2'>${f.month}</td><td class='p-2'>${f.bales_used}</td><td class='p-2'>${f.estimated_cost} kr</td></tr>`;
+        });
+        html+='</tbody></table>';
+        showModal(html);
+    }
 
     function showToast(m, t = 'success', d = 3000) {
         const c = {success: 'bg-green-600', error: 'bg-red-600', info: 'bg-blue-600'};
@@ -494,8 +614,9 @@ $dId = isset($_GET['delivery']) ? (int)$_GET['delivery'] : null; ?>
     }
 
     const toggle = document.getElementById('themeToggle');
-    function updateTheme(){
-        if(localStorage.theme === 'dark'){
+
+    function updateTheme() {
+        if (localStorage.theme === 'dark') {
             document.documentElement.classList.add('dark');
             toggle.textContent = '☀️';
         } else {
@@ -503,12 +624,12 @@ $dId = isset($_GET['delivery']) ? (int)$_GET['delivery'] : null; ?>
             toggle.textContent = '🌙';
         }
     }
+
     updateTheme();
-    toggle.addEventListener('click',()=>{
+    toggle.addEventListener('click', () => {
         localStorage.theme = localStorage.theme === 'dark' ? 'light' : 'dark';
         updateTheme();
     });
-
 
 
     document.getElementById('addDeliveryForm')?.addEventListener('submit', async e => {
@@ -593,7 +714,7 @@ $dId = isset($_GET['delivery']) ? (int)$_GET['delivery'] : null; ?>
                 i.addEventListener('change', save);
                 i.addEventListener('blur', save);
 
-                async function save(){
+                async function save() {
                     const newVal = i.value.trim();
                     const oldVal = cur.trim();
 
@@ -604,19 +725,19 @@ $dId = isset($_GET['delivery']) ? (int)$_GET['delivery'] : null; ?>
                     }
 
                     const fd = new FormData();
-                    fd.append('action','update_date');
-                    fd.append('id',id);
-                    fd.append('field',f);
-                    fd.append('value',newVal);
+                    fd.append('action', 'update_date');
+                    fd.append('id', id);
+                    fd.append('field', f);
+                    fd.append('value', newVal);
 
-                    const r = await fetch('',{method:'POST',body:fd});
+                    const r = await fetch('', {method: 'POST', body: fd});
                     const j = await r.json();
-                    if(j.success){
+                    if (j.success) {
                         el.textContent = newVal;
                         showToast('📅 Datum sparat');
                     } else {
                         el.textContent = oldVal || '-';
-                        showToast('⚠️ Kunde inte spara datum','error');
+                        showToast('⚠️ Kunde inte spara datum', 'error');
                     }
                 }
 
@@ -650,45 +771,50 @@ $dId = isset($_GET['delivery']) ? (int)$_GET['delivery'] : null; ?>
     }
 
 
-    async function generateReport(){
-        const fd=new FormData();fd.append('action','generate_full_report');
-        const r=await fetch('',{method:'POST',body:fd});
-        const j=await r.json();
-        if(!j.success){showToast('Kunde inte generera rapport','error');return;}
-        let html=`<h3 class='text-xl font-semibold mb-2'>📊 Rapport</h3>`;
-        html+=`<p><b>Genomsnittlig öppentid:</b> ${j.avgDays} dagar</p>`;
-        html+=`<p><b>Öppnade senaste ${j.period} dagarna:</b> ${j.openedCount} (${j.dailyRate}/dag)</p>`;
-        html+=`<p><b>Kvar i lager:</b> ${j.remaining}</p>`;
-        html+=`<p><b>Prognos:</b> ${j.daysLeft?j.daysLeft+' dagar kvar — beräknat slut '+j.forecastDate:'-'} </p>`;
-        if(j.bad.length){
-            html+=`<hr class='my-2'><p><b>Felaktiga (ej ersatta):</b></p><ul class='list-disc list-inside text-sm'>`;
-            j.bad.forEach(b=>html+=`<li>Bal #${b.bale_id} (${b.supplier}, ${b.delivery_date})</li>`);
-            html+='</ul>';
-        } else html+=`<p class='text-sm text-gray-500 mt-2'>Inga felaktiga balar 🎉</p>`;
+    async function generateReport() {
+        const fd = new FormData();
+        fd.append('action', 'generate_full_report');
+        const r = await fetch('', {method: 'POST', body: fd});
+        const j = await r.json();
+        if (!j.success) {
+            showToast('Kunde inte generera rapport', 'error');
+            return;
+        }
+        let html = `<h3 class='text-xl font-semibold mb-2'>📊 Rapport</h3>`;
+        html += `<p><b>Genomsnittlig öppentid:</b> ${j.avgDays} dagar</p>`;
+        html += `<p><b>Öppnade senaste ${j.period} dagarna:</b> ${j.openedCount} (${j.dailyRate}/dag)</p>`;
+        html += `<p><b>Kvar i lager:</b> ${j.remaining}</p>`;
+        html += `<p><b>Prognos:</b> ${j.daysLeft ? j.daysLeft + ' dagar kvar — beräknat slut ' + j.forecastDate : '-'} </p>`;
+        if (j.bad.length) {
+            html += `<hr class='my-2'><p><b>Felaktiga (ej ersatta):</b></p><ul class='list-disc list-inside text-sm'>`;
+            j.bad.forEach(b => html += `<li>Bal #${b.bale_id} (${b.supplier}, ${b.delivery_date})</li>`);
+            html += '</ul>';
+        } else html += `<p class='text-sm text-gray-500 mt-2'>Inga felaktiga balar 🎉</p>`;
         showModal(html);
     }
-    function showModal(content){
-        const overlay=document.createElement('div');
-        overlay.className='fixed inset-0 bg-black/40 flex items-center justify-center z-50';
-        overlay.innerHTML=`<div class='bg-white dark:bg-gray-800 p-5 rounded shadow-lg max-w-lg w-full relative'>
+
+    function showModal(content) {
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 bg-black/40 flex items-center justify-center z-50';
+        overlay.innerHTML = `<div class='bg-white dark:bg-gray-800 p-5 rounded shadow-lg max-w-lg w-full relative'>
     <button class='absolute top-2 right-3 text-gray-400 hover:text-gray-600' onclick='this.closest(".fixed").remove()'>✖</button>
     ${content}
   </div>`;
         document.body.appendChild(overlay);
     }
 
-    async function deletePhoto(id){
-        if(!confirm('Ta bort bilden för denna bal?')) return;
+    async function deletePhoto(id) {
+        if (!confirm('Ta bort bilden för denna bal?')) return;
         const fd = new FormData();
-        fd.append('action','delete_photo');
-        fd.append('id',id);
-        const r = await fetch('',{method:'POST',body:fd});
+        fd.append('action', 'delete_photo');
+        fd.append('id', id);
+        const r = await fetch('', {method: 'POST', body: fd});
         const j = await r.json();
-        if(j.success){
+        if (j.success) {
             showToast('🗑️ Bild borttagen');
             location.reload();
         } else {
-            showToast('⚠️ Kunde inte ta bort bilden','error');
+            showToast('⚠️ Kunde inte ta bort bilden', 'error');
         }
     }
 
@@ -714,6 +840,42 @@ $dId = isset($_GET['delivery']) ? (int)$_GET['delivery'] : null; ?>
 
     document.addEventListener('DOMContentLoaded', checkNotifications);
     setInterval(checkNotifications, 600000);
+
+    function makeNumbersEditable(){
+        document.querySelectorAll('.editable-num').forEach(el=>{
+            el.addEventListener('click',()=>{
+                if(el.querySelector('input')) return;
+                const id=el.dataset.id, field=el.dataset.field;
+                const current=el.textContent.trim();
+                const inp=document.createElement('input');
+                inp.type='number';
+                inp.step='0.01';
+                inp.value=current.replace(',','.');
+                inp.className='border rounded p-1 text-sm w-24 dark:bg-gray-700';
+                el.innerHTML='';
+                el.appendChild(inp);
+                inp.focus();
+                inp.addEventListener('blur',save);
+                inp.addEventListener('change',save);
+
+                async function save(){
+                    const val=inp.value.trim();
+                    if(!val || val===current) {el.textContent=current; return;}
+                    const fd=new FormData();
+                    fd.append('action','update_delivery_field');
+                    fd.append('id',id);
+                    fd.append('field',field);
+                    fd.append('value',val);
+                    const r=await fetch('',{method:'POST',body:fd});
+                    const j=await r.json();
+                    if(j.success){el.textContent=val;showToast('💾 Sparat');}
+                    else {el.textContent=current;showToast('⚠️ Kunde inte spara','error');}
+                }
+            });
+        });
+    }
+    document.addEventListener('DOMContentLoaded',makeNumbersEditable);
+
 </script>
 </body>
 </html>
