@@ -3,3 +3,5 @@ uploads/*
 .idea/
 vendor/*
 last_email_sent.txt
+warm_model.json
+smhi_cache.json
