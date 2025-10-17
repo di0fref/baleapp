@@ -6,6 +6,7 @@ ini_set('display_errors', 1);
 $db = new PDO('sqlite:' . __DIR__ . '/haybales.db');
 $db->exec("PRAGMA foreign_keys = ON;");
 
+
 /* === Hjälpfunktion för automatisk migrering === */
 function ensureColumn($db, $table, $column, $definition) {
     $cols = array_column($db->query("PRAGMA table_info($table)")->fetchAll(PDO::FETCH_ASSOC), 'name');
@@ -73,6 +74,35 @@ ensureColumn($db, 'bales', 'opened_by', 'TEXT');
 ensureColumn($db, 'bales', 'closed_by', 'TEXT');
 ensureColumn($db, 'bales', 'marked_bad_by', 'TEXT');
 ensureColumn($db, 'bales', 'reimbursed_date', 'TEXT');
+ensureColumn($db, 'bales', 'warm_date', 'TEXT');
+
+function getSmhiForecast($lat = 58.4, $lon = 15.6) {
+    $url = "https://opendata-download-metfcst.smhi.se/api/category/pmp3g/version/2/geotype/point/lon/$lon/lat/$lat/data.json";
+    $json = @file_get_contents($url);
+    if(!$json) return null;
+    $data = json_decode($json, true);
+    if(!$data || empty($data['timeSeries'])) return null;
+
+    $temps = [];
+    foreach($data['timeSeries'] as $ts){
+        $time = substr($ts['validTime'], 0, 10);
+        // Next 7 days only
+        if($time > date('Y-m-d', strtotime('+7 days'))) break;
+        foreach($ts['parameters'] as $p){
+            if($p['name'] === 't'){ $temps[] = $p['values'][0]; }
+        }
+    }
+    return $temps ? array_sum($temps)/count($temps) : null;
+}
+
+$cacheFile = __DIR__ . '/smhi_cache.json';
+if(file_exists($cacheFile) && time() - filemtime($cacheFile) < 10800){
+    $avgTempForecast = json_decode(file_get_contents($cacheFile), true)['temp'] ?? null;
+} else {
+    $temp = getSmhiForecast(58.4, 15.6);
+    file_put_contents($cacheFile, json_encode(['temp'=>$temp,'ts'=>time()]));
+    $avgTempForecast = $temp;
+}
 
 /* === Standardanvändare === */
 if (!$db->query("SELECT COUNT(*) FROM users")->fetchColumn()) {
@@ -101,6 +131,31 @@ if (!isset($_POST['action'])) exit;
 
 $a = $_POST['action'];
 $user = $_SESSION['user'] ?? 'okänd';
+
+if ($a === 'get_warm_risk') {
+    $avgTempForecast = $model ? getSmhiForecast(58.4, 15.6) : null;
+    $riskList = [];
+
+    if($model && $avgTempForecast !== null){
+        $rows = $db->query("SELECT id, delivery_id, open_date FROM bales WHERE status='open' AND warm_date IS NULL")->fetchAll(PDO::FETCH_ASSOC);
+        foreach($rows as $r){
+            if(!$r['open_date']) continue;
+            $predDays = round($model['a'] + $model['b'] * $avgTempForecast, 1);
+            if($predDays > 0 && $predDays < 15){
+                $predDate = (new DateTime($r['open_date']))->add(new DateInterval('P' . ceil($predDays) . 'D'))->format('Y-m-d');
+                $riskList[] = [
+                    'bale_id' => $r['id'],
+                    'pred_days' => $predDays,
+                    'pred_date' => $predDate
+                ];
+            }
+        }
+    }
+
+    echo json_encode(['success'=>true, 'data'=>$riskList]);
+    exit;
+}
+
 
 /* === Lägg till leverans === */
 if ($a === 'add_delivery') {
@@ -205,14 +260,30 @@ if ($a==='toggle_flag') {
 }
 
 /* === Uppdatera datum === */
-if ($a==='update_date'){
-    $id=(int)$_POST['id']; $f=$_POST['field']; $v=$_POST['value']?:null;
-    if(!in_array($f,['open_date','close_date'])) exit;
-    $st=$db->query("SELECT status FROM bales WHERE id=$id")->fetchColumn();
-    if(!in_array($st,['open','closed'])) { echo json_encode(['success'=>false]); exit; }
-    $db->prepare("UPDATE bales SET $f=? WHERE id=?")->execute([$v,$id]);
-    echo json_encode(['success'=>true]); exit;
+if ($a === 'update_date') {
+    $id = (int)$_POST['id'];
+    $f = $_POST['field'];
+    $v = $_POST['value'] ?: null;
+
+    if (!in_array($f, ['open_date', 'close_date', 'warm_date'])) {
+        echo json_encode(['success' => false, 'msg' => 'Invalid field']);
+        exit;
+    }
+
+    // Only enforce status restriction for open/close dates
+    if ($f !== 'warm_date') {
+        $st = $db->query("SELECT status FROM bales WHERE id=$id")->fetchColumn();
+        if (!in_array($st, ['open', 'closed'])) {
+            echo json_encode(['success' => false, 'msg' => 'Invalid status']);
+            exit;
+        }
+    }
+
+    $db->prepare("UPDATE bales SET $f=? WHERE id=?")->execute([$v, $id]);
+    echo json_encode(['success' => true]);
+    exit;
 }
+
 
 /* === Ladda upp foto === */
 if ($a==='upload_photo'){

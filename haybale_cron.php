@@ -12,6 +12,7 @@ $db = new PDO('sqlite:' . __DIR__ . '/haybales.db');
 $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 $email_to = "fredrik.fahlstad@exsitec.se";   // mottagare
+$email_to2 = "erika.frick@yahoo.se";   // mottagare
 $email_from = "fredrik.fahlstad@gmail.com";  // din Gmail-adress (samma som du loggar in med)
 $email_name = "Höbalsappen";
 $email_subject = "Varning: Höbalar öppna för länge";
@@ -32,10 +33,10 @@ $too_long = $db->query("
   WHERE b.status='open' AND b.open_date <= date('now','-{$limit} day')
 ")->fetchAll(PDO::FETCH_ASSOC);
 
-//if (!$too_long) exit;
-//
+if (!$too_long) exit;
+
 $today = date('Y-m-d');
-//if (file_exists($email_logfile) && trim(file_get_contents($email_logfile)) === $today) exit;
+if (file_exists($email_logfile) && trim(file_get_contents($email_logfile)) === $today) exit;
 
 // === Skapa e-postmeddelande ===
 $body = "Följande höbalar har varit öppna längre än {$limit} dagar:\n\n";
@@ -57,6 +58,7 @@ try {
 
     $mail->setFrom($email_from, $email_name);
     $mail->addAddress($email_to);
+    $mail->addAddress($email_to2);
     $mail->Subject = $email_subject;
     $mail->Body = $body;
     $mail->CharSet = 'UTF-8';

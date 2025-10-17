@@ -304,6 +304,23 @@ async function checkNotifications() {
     }
 }
 
+async function loadWarmRisks(){
+    const fd = new FormData();
+    fd.append('action','get_warm_risk');
+    const r = await fetch('api.php', {method:'POST', body:fd});
+    const j = await r.json();
+    if(!j.success) return;
+
+    j.data.forEach(risk=>{
+        const el = document.querySelector(`[data-bale="${risk.bale_id}"] .warm-risk`);
+        if(el){
+            el.textContent = `🔥 Risk om ~${risk.pred_days} dagar (${risk.pred_date})`;
+            el.classList.add('text-orange-600','text-xs');
+        }
+    });
+}
+document.addEventListener('DOMContentLoaded', loadWarmRisks);
+
 // === Start ===
 document.addEventListener('DOMContentLoaded', () => {
     App.loadDeliveries();

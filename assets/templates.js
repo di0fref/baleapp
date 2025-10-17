@@ -103,9 +103,12 @@ Templates.deliveryDetail = (delivery, bales) => `
           <th class="p-2">Status</th>
           <th class="p-2">Öppnad</th>
           <th class="p-2">Stängd</th>
+          <th class="p-2">Varm</th>
           <th class="p-2">Dagar</th>
           <th class="p-2">Bild</th>
           <th class="p-2">Åtgärder</th>
+          <th class="p-2">Risk</th>
+
         </tr>
       </thead>
       <tbody>
@@ -153,6 +156,20 @@ Templates.deliveryDetail = (delivery, bales) => `
                   ${b.closed_by ? `<span class='text-xs text-gray-500 italic'>(av ${b.closed_by})</span>` : ''}
                 </div>
               </td>
+              
+              
+                    <td class="p-2">
+                      <div class="flex items-center gap-1">
+                        <span class="editable-date cursor-pointer text-orange-600 _underline"
+                              data-id="${b.id}" data-field="warm_date"
+                              data-locked="${(b.status === 'open' || b.status === 'closed') ? 'false' : 'true'}">
+                          ${b.warm_date || '-'}
+                        </span>
+                      </div>
+                    </td>
+
+
+
               <td class="p-2 text-center">${days}</td>
               <td class="p-2 text-center">
                 ${b.photo
@@ -168,6 +185,8 @@ Templates.deliveryDetail = (delivery, bales) => `
                 <button onclick="toggleFlag(${b.id}, 'is_bad', ${b.is_bad ? 0 : 1})" class="px-2 py-1 rounded text-xs bg-gray-200 dark:bg-blue-700 dark:hover:bg-blue-600">Felaktig</button>
                 <button onclick="toggleFlag(${b.id}, 'is_reimbursed', ${b.is_reimbursed ? 0 : 1})" class="px-2 py-1 rounded text-xs bg-gray-200 dark:bg-blue-700 dark:hover:bg-blue-600">Ersatt</button>
               </td>
+              <td class="p-2 warm-risk" data-bale="${b.id}">–</td>
+
             </tr>
           `;
 }).join('')}
