@@ -282,7 +282,45 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // === Knapp-kopplingar utanför #app ===
-document.getElementById('logoutBtn')?.addEventListener('click', () => { window.location = '?logout'; });
+
+
+document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+    if (!confirm('Logga ut?')) return;
+
+    try {
+        const r = await fetch('api.php?logout');
+        const text = await r.text();
+        let j = {};
+        try {
+            j = JSON.parse(text);
+        } catch {
+            console.error('Invalid JSON:', text);
+        }
+
+        if (j.success) {
+            // Clear session info
+            localStorage.clear();
+            sessionStorage.clear();
+            document.cookie = 'hayuser=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+            toggleTopNav(false);
+            // Show login form dynamically
+            if (window.Templates?.login) {
+                document.getElementById('app').innerHTML = Templates.login;
+                initLogin();
+            } else {
+                location.reload();
+            }
+
+            showToast('👋 Du är utloggad');
+        } else {
+            showToast('⚠️ Kunde inte logga ut', 'error');
+        }
+    } catch (err) {
+        console.error(err);
+        showToast('⚠️ Serverfel vid utloggning', 'error');
+    }
+});
+
 
 // === Notifieringar (banner högst upp i leveranslistan) ===
 async function checkNotifications() {
@@ -319,13 +357,55 @@ async function loadWarmRisks(){
         }
     });
 }
+function initLogin() {
+    const form = document.getElementById('loginForm');
+    if (!form) return;
+    form.addEventListener('submit', async e => {
+        e.preventDefault();
+        const fd = new FormData(form);
+        fd.append('action', 'login');
+        const r = await fetch('api.php', { method: 'POST', body: fd });
+        const j = await r.json();
+        if (j.success) {
+            toggleTopNav(true);
+            location.reload();
+        }
+        else showToast(j.error || 'Fel användarnamn eller lösenord', 'error');
+    });
+}
+// === Visa/dölj toppmenyn ===
+function toggleTopNav(show) {
+    const nav = document.getElementById('topNav');
+    if (!nav) return;
+    nav.classList.toggle('hidden', !show);
+}
+
 document.addEventListener('DOMContentLoaded', loadWarmRisks);
 
 // === Start ===
-document.addEventListener('DOMContentLoaded', () => {
-    App.loadDeliveries();
-    checkNotifications();
-    setInterval(checkNotifications, 600000);
+document.addEventListener('DOMContentLoaded', async () => {
+    // Check login state before loading anything
+    try {
+        const r = await fetch('api.php?action=check_login');
+        const j = await r.json();
+
+        if (!j.logged_in) {
+            toggleTopNav(false);
+            // 🟡 User not logged in → show login view
+            document.getElementById('app').innerHTML = Templates.login;
+            initLogin();
+            return;
+        }
+
+        // 🟢 Logged in → show app
+        toggleTopNav(true);
+        App.loadDeliveries();
+        checkNotifications();
+        setInterval(checkNotifications, 600000);
+    } catch (err) {
+        console.error(err);
+        showToast('⚠️ Kunde inte ansluta till servern', 'error');
+    }
 });
 
 // === Globala helpers som används av templates (måste vara i global scope) ===

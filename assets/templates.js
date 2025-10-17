@@ -47,6 +47,16 @@ const Templates = {
     </div>
   `,
 };
+Templates.login = `
+  <div class="bg-white dark:bg-gray-800 p-6 rounded shadow max-w-sm mx-auto mt-20">
+    <h1 class="text-2xl font-bold mb-4 text-center">🌾 Höbalsapp</h1>
+    <form id="loginForm" class="space-y-3">
+      <input name="username" class="w-full border rounded p-2 dark:bg-gray-700" placeholder="Användarnamn" required>
+      <input type="password" name="password" class="w-full border rounded p-2 dark:bg-gray-700" placeholder="Lösenord" required>
+      <button class="bg-green-600 text-white w-full rounded p-2">Logga in</button>
+    </form>
+  </div>
+`;
 Templates.deliveryDetail = (delivery, bales) => `
   <div class="bg-white dark:bg-gray-800 p-4 rounded shadow mb-6">
     <div class="my-2">
@@ -194,3 +204,5 @@ Templates.deliveryDetail = (delivery, bales) => `
     </table>
   </div>
 `;
+
+
