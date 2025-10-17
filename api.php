@@ -94,6 +94,8 @@ function getSmhiForecast($lat = 58.4, $lon = 15.6) {
     }
     return $temps ? array_sum($temps)/count($temps) : null;
 }
+$modelFile = __DIR__ . '/warm_model.json';
+$model = file_exists($modelFile) ? json_decode(file_get_contents($modelFile), true) : null;
 
 $cacheFile = __DIR__ . '/smhi_cache.json';
 if(file_exists($cacheFile) && time() - filemtime($cacheFile) < 10800){
