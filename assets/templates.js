@@ -3,7 +3,12 @@ const Templates = {
     loader: `<div class='text-center text-gray-500 dark:text-gray-400 py-10'>Laddar...</div>`,
 
     deliveryRow: d => `
-    <tr class="border-t border-l-4 ${d.stats.unreimbursed ? 'border-red-400' : 'border-gray-200'} dark:border-gray-600">
+
+deliveryRow: d => \`
+    <tr class="border-t border-l-4 ${d.stats.unreimbursed ? 'border-red-400' : 'border-gray-200'} 
+               dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 
+               transition-colors">
+
       <td class="p-2">${d.supplier}</td>
       <td class="p-2">${d.delivery_date}</td>
       <td class="p-2 text-center">${d.stats.total}</td>
@@ -130,7 +135,7 @@ Templates.deliveryDetail = (delivery, bales) => `
         days = Math.floor((d2 - d1) / (1000 * 60 * 60 * 24)) + ' dagar';
     }
     return `
-            <tr class="border-t dark:border-gray-600">
+<tr class="border-t dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
               <td class="p-2">${b.id}</td>
               <td class="p-2">
                 ${b.status

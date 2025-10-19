@@ -12,6 +12,11 @@
             darkMode: 'class'
         }
     </script>
+    <style>
+        tr{
+            @apply:center;
+        }
+    </style>
 </head>
 <body class="bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100 transition-colors duration-500">
 
