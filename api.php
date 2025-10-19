@@ -322,16 +322,46 @@ if ($a === 'delete_invoice_file') {
 if ($a === 'update_bale_status') {
     $id = (int)$_POST['id'];
     $s = $_POST['status'];
+    $current = $db->query("SELECT status FROM bales WHERE id=$id")->fetchColumn();
+
     if ($s === 'open') {
-        $db->prepare("UPDATE bales SET status='open', open_date=COALESCE(open_date,date('now')), closed_by=NULL, close_date=NULL, opened_by=? WHERE id=?")->execute([$user, $id]);
+        if ($current === 'open') {
+            // 🔁 Toggle OFF — clear open status, date, and user
+            $db->prepare("UPDATE bales 
+                          SET status=NULL, open_date=NULL, opened_by=NULL 
+                          WHERE id=?")->execute([$id]);
+        } else {
+            // ✅ Mark as OPEN
+            $db->prepare("UPDATE bales 
+                          SET status='open', open_date=COALESCE(open_date, date('now')), 
+                              close_date=NULL, closed_by=NULL, opened_by=? 
+                          WHERE id=?")->execute([$user, $id]);
+        }
     } elseif ($s === 'closed') {
-        $db->prepare("UPDATE bales SET status='closed', close_date=COALESCE(close_date,date('now')), closed_by=? WHERE id=?")->execute([$user, $id]);
+        if ($current === 'closed') {
+            // 🔁 Toggle OFF — clear closed status, date, and user
+            $db->prepare("UPDATE bales 
+                          SET status=NULL, close_date=NULL, closed_by=NULL 
+                          WHERE id=?")->execute([$id]);
+        } else {
+            // ✅ Mark as CLOSED
+            $db->prepare("UPDATE bales 
+                          SET status='closed', close_date=COALESCE(close_date, date('now')), 
+                              closed_by=?, open_date=open_date, opened_by=opened_by 
+                          WHERE id=?")->execute([$user, $id]);
+        }
     } else {
-        $db->prepare("UPDATE bales SET status=NULL, open_date=NULL, close_date=NULL WHERE id=?")->execute([$id]);
+        // Fallback (reset completely)
+        $db->prepare("UPDATE bales 
+                      SET status=NULL, open_date=NULL, close_date=NULL, opened_by=NULL, closed_by=NULL 
+                      WHERE id=?")->execute([$id]);
     }
+
     echo json_encode(['success' => true]);
     exit;
 }
+
+
 
 /* === Markera flaggor (felaktig/ersatt) === */
 if ($a === 'toggle_flag') {
@@ -359,26 +389,34 @@ if ($a === 'toggle_flag') {
 if ($a === 'update_date') {
     $id = (int)$_POST['id'];
     $f = $_POST['field'];
-    $v = $_POST['value'] ?: null;
+    $v = isset($_POST['value']) ? trim($_POST['value']) : '';
+    $allowed = ['open_date', 'close_date', 'warm_date'];
+    if (!in_array($f, $allowed)) exit;
 
-    if (!in_array($f, ['open_date', 'close_date', 'warm_date'])) {
-        echo json_encode(['success' => false, 'msg' => 'Invalid field']);
+    // If value empty => clear field
+    if ($v === '') {
+        $stmt = $db->prepare("UPDATE bales SET $f = NULL WHERE id = ?");
+        $stmt->execute([$id]);
+        echo json_encode(['success' => true, 'cleared' => true]);
         exit;
     }
 
-    // Only enforce status restriction for open/close dates
+    // Allow warm_date always, others only if bale open/closed
     if ($f !== 'warm_date') {
-        $st = $db->query("SELECT status FROM bales WHERE id=$id")->fetchColumn();
+        $st = $db->query("SELECT status FROM bales WHERE id = $id")->fetchColumn();
         if (!in_array($st, ['open', 'closed'])) {
-            echo json_encode(['success' => false, 'msg' => 'Invalid status']);
+            echo json_encode(['success' => false]);
             exit;
         }
     }
 
-    $db->prepare("UPDATE bales SET $f=? WHERE id=?")->execute([$v, $id]);
+    $stmt = $db->prepare("UPDATE bales SET $f = ? WHERE id = ?");
+    $stmt->execute([$v, $id]);
     echo json_encode(['success' => true]);
     exit;
 }
+
+
 
 
 /* === Ladda upp foto === */

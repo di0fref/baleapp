@@ -180,7 +180,6 @@ window.onpopstate = e => {
 };
 
 // === Event DELEGERING på #app ===
-// === Event DELEGERING på #app ===
 document.addEventListener('DOMContentLoaded', () => {
     const app = document.getElementById('app');
 
@@ -204,10 +203,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const save = async () => {
             const newVal = input.value.trim();
             const oldVal = current.trim();
-            if (!newVal || newVal === oldVal || newVal === '-') {
-                el.textContent = oldVal || '-';
+
+// Allow clearing the date
+            if (newVal === '' || newVal === '-') {
+                const j = await postAction('update_date', { id, field, value: '' });
+                el.textContent = '-';
+                showToast('🗑️ Datum rensat');
                 return;
             }
+
+// Skip if unchanged
+            if (newVal === oldVal) return;
+
             const j = await postAction('update_date', { id, field, value: newVal });
             if (j.success) {
                 el.textContent = newVal;
