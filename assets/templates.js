@@ -3,8 +3,6 @@ const Templates = {
     loader: `<div class='text-center text-gray-500 dark:text-gray-400 py-10'>Laddar...</div>`,
 
     deliveryRow: d => `
-
-deliveryRow: d => \`
     <tr class="border-t border-l-4 ${d.stats.unreimbursed ? 'border-red-400' : 'border-gray-200'} 
                dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 
                transition-colors">
@@ -40,18 +38,126 @@ deliveryRow: d => \`
         <input type="number" name="bales" class="border rounded p-2 dark:bg-gray-700" placeholder="Antal balar" min="1" required>
         <button class="bg-green-600 text-white rounded p-2">Lägg till</button>
       </form>
-      <table class="min-w-full text-sm border dark:border-gray-700">
-        <thead class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-100 uppercase">
-          <tr>
-            <th class="p-2">Leverantör</th><th class="p-2">Datum</th><th class="p-2">Antal</th>
-            <th class="p-2">Status</th><th class="p-2">Betald</th><th class="p-2">Faktura</th><th class="p-2"></th>
-          </tr>
-        </thead>
-        <tbody>${ds.map(Templates.deliveryRow).join('')}</tbody>
-      </table>
+
+
+<div class="hidden md:block">
+  <table class="min-w-full text-sm border dark:border-gray-700">
+    <thead class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-100 uppercase">
+      <tr>
+        <th class="p-2">Leverantör</th>
+        <th class="p-2">Datum</th>
+        <th class="p-2">Antal</th>
+        <th class="p-2">Status</th>
+        <th class="p-2">Betald</th>
+        <th class="p-2">Faktura</th>
+        <th class="p-2"></th>
+      </tr>
+    </thead>
+    <tbody>${ds.map(Templates.deliveryRow).join('')}</tbody>
+  </table>
+</div>
+
+<!-- Card layout for small screens -->
+<div class="grid grid-cols-1 gap-3 md:hidden">
+  ${ds.map(d => `
+    <div class="border rounded-lg p-3 bg-white dark:bg-gray-800 shadow-sm 
+                hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+      <div class="flex justify-between items-center mb-1">
+        <h3 class="font-semibold">${d.supplier}</h3>
+        <span class="text-xs text-gray-500">${d.delivery_date}</span>
+      </div>
+      <p class="text-sm mb-1">Antal: ${d.stats.total} | Öppna: ${d.stats.open}</p>
+      <p class="text-sm mb-2">Felaktiga: ${d.stats.bad}</p>
+      <div class="flex flex-wrap gap-2 justify-end mt-2">
+        <button onclick="App.loadDelivery(${d.id})"
+                class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded">
+          Visa balar →
+        </button>
+        ${d.invoice_file
+        ? `<a href="${d.invoice_file}" target="_blank" 
+                 class="text-xs bg-gray-200 dark:bg-blue-700 px-2 py-1 rounded">Faktura</a>`
+        : `<button onclick="uploadInvoice(${d.id})"
+                     class="text-xs bg-gray-200 dark:bg-blue-700 px-2 py-1 rounded">📎</button>`
+    }
+        <label class="flex items-center gap-1 text-xs">
+          <input type="checkbox" ${d.paid ? 'checked' : ''} 
+                 onchange="updateDelivery(${d.id}, this.checked?1:0)">
+          Betald
+        </label>
+      </div>
+    </div>
+  `).join('')}
+</div>
+
+
+
+
     </div>
   `,
 };
+
+Templates.baleRow = b => `
+  <tr class="border-t dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+    <td class="p-2">${b.id}</td>
+    <td class="p-2">
+      ${b.status
+    ? `<span class='px-2 py-1 text-xs rounded ${b.status === 'open'
+        ? 'bg-blue-100 text-blue-800'
+        : 'bg-green-100 text-green-800'}'>
+            ${b.status === 'open' ? 'Öppen' : 'Stängd'}
+           </span>`
+    : ''}
+      ${b.is_bad ? `<span class='px-2 py-1 text-xs rounded bg-red-100 text-red-800'>Felaktig</span>` : ''}
+      ${b.is_reimbursed ? `<span class='px-2 py-1 text-xs rounded bg-yellow-100 text-yellow-800'>Ersatt</span>` : ''}
+    </td>
+    <td class="p-2">
+      <span class="editable-date cursor-pointer text-blue-600"
+            data-id="${b.id}" data-field="open_date">
+        ${b.open_date || '-'}
+      </span>
+    </td>
+    <td class="p-2">
+      <span class="editable-date cursor-pointer text-blue-600"
+            data-id="${b.id}" data-field="close_date">
+        ${b.close_date || '-'}
+      </span>
+    </td>
+    <td class="p-2">
+      <span class="editable-date cursor-pointer text-orange-600"
+            data-id="${b.id}" data-field="warm_date">
+        ${b.warm_date || '-'}
+      </span>
+    </td>
+    <td class="p-2 text-center">
+      ${(() => {
+    if (!b.open_date) return '-';
+    const d1 = new Date(b.open_date);
+    const d2 = b.close_date ? new Date(b.close_date) : new Date();
+    return Math.floor((d2 - d1) / (1000 * 60 * 60 * 24)) + ' dagar';
+})()}
+    </td>
+    <td class="p-2 text-center">
+      ${b.photo
+    ? `<a href="${b.photo}" target="_blank" class="text-blue-600 underline text-xs">Visa</a>
+           <button onclick="deletePhoto(${b.id})"
+                   class="text-xs text-red-600">🗑️</button>`
+    : `<button onclick="uploadPhoto(${b.id})"
+                   class="text-xs bg-gray-200 dark:bg-blue-700 px-2 py-1 rounded">📷</button>`}
+    </td>
+    <td class="p-2 flex flex-wrap gap-1 justify-center">
+      <button onclick="setStatus(${b.id}, 'open')"
+              class="px-2 py-1 text-xs bg-gray-200 dark:bg-blue-700 rounded">Öppen</button>
+      <button onclick="setStatus(${b.id}, 'closed')"
+              class="px-2 py-1 text-xs bg-gray-200 dark:bg-blue-700 rounded">Stängd</button>
+      <button onclick="toggleFlag(${b.id}, 'is_bad', ${b.is_bad ? 0 : 1})"
+              class="px-2 py-1 text-xs bg-gray-200 dark:bg-blue-700 rounded">Felaktig</button>
+      <button onclick="toggleFlag(${b.id}, 'is_reimbursed', ${b.is_reimbursed ? 0 : 1})"
+              class="px-2 py-1 text-xs bg-gray-200 dark:bg-blue-700 rounded">Ersatt</button>
+    </td>
+    <td class="p-2 warm-risk" data-bale="${b.id}">–</td>
+  </tr>
+`;
+
 Templates.login = `
   <div class="bg-white dark:bg-gray-800 p-6 rounded shadow max-w-sm mx-auto mt-20">
     <h1 class="text-2xl font-bold mb-4 text-center">🌾 Höbalsapp</h1>
@@ -111,102 +217,104 @@ Templates.deliveryDetail = (delivery, bales) => `
       Felaktiga: ${bales.filter(b => b.is_bad).length}
     </p>
 
-    <table class="min-w-full text-sm border dark:border-gray-700">
-      <thead class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-100 uppercase">
-        <tr>
-          <th class="p-2">#</th>
-          <th class="p-2">Status</th>
-          <th class="p-2">Öppnad</th>
-          <th class="p-2">Stängd</th>
-          <th class="p-2">Varm</th>
-          <th class="p-2">Dagar</th>
-          <th class="p-2">Bild</th>
-          <th class="p-2">Åtgärder</th>
-          <th class="p-2">Risk</th>
+<!-- 🖥 Desktop table -->
+<div class="hidden md:block">
+  <table class="min-w-full text-sm border dark:border-gray-700">
+    <thead class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-100 uppercase">
+      <tr>
+        <th class="p-2">#</th>
+        <th class="p-2">Status</th>
+        <th class="p-2">Öppnad</th>
+        <th class="p-2">Stängd</th>
+        <th class="p-2">Varm</th>
+        <th class="p-2">Dagar</th>
+        <th class="p-2">Bild</th>
+        <th class="p-2">Åtgärder</th>
+        <th class="p-2">Risk</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${bales.map(b => Templates.baleRow(b)).join('')}
+    </tbody>
+  </table>
+</div>
 
-        </tr>
-      </thead>
-      <tbody>
-        ${bales.map(b => {
-    let days = '-';
-    if (b.open_date) {
-        const d1 = new Date(b.open_date);
-        const d2 = b.close_date ? new Date(b.close_date) : new Date();
-        days = Math.floor((d2 - d1) / (1000 * 60 * 60 * 24)) + ' dagar';
-    }
-    return `
-<tr class="border-t dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-              <td class="p-2">${b.id}</td>
-              <td class="p-2">
-                ${b.status
-        ? `<span class='px-2 py-1 text-xs rounded ${b.status === 'open'
-            ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}'>
-                      ${b.status === 'open' ? 'Öppen' : 'Stängd'}
-                     </span>`
-        : ''}
-                ${b.is_bad
-        ? `<span class='px-2 py-1 text-xs rounded bg-red-100 text-red-800'>Felaktig</span>`
-        : ''}
-                ${b.is_reimbursed
-        ? `<span class='px-2 py-1 text-xs rounded bg-yellow-100 text-yellow-800'>Ersatt</span>`
-        : ''}
-              </td>
-              <td class="p-2">
-                <div class="flex items-center gap-1">
-                  <span class="editable-date cursor-pointer text-blue-600 _underline"
-                        data-id="${b.id}" data-field="open_date"
-                        data-locked="${(b.status === 'open' || b.status === 'closed') ? 'false' : 'true'}">
-                    ${b.open_date || '-'}
-                  </span>
-                  ${b.opened_by ? `<span class='text-xs text-gray-500 italic'>(av ${b.opened_by})</span>` : ''}
-                </div>
-              </td>
-              <td class="p-2">
-                <div class="flex items-center gap-1">
-                  <span class="editable-date cursor-pointer text-blue-600 _underline"
-                        data-id="${b.id}" data-field="close_date"
-                        data-locked="${(b.status === 'open' || b.status === 'closed') ? 'false' : 'true'}">
-                    ${b.close_date || '-'}
-                  </span>
-                  ${b.closed_by ? `<span class='text-xs text-gray-500 italic'>(av ${b.closed_by})</span>` : ''}
-                </div>
-              </td>
-              
-              
-                    <td class="p-2">
-                      <div class="flex items-center gap-1">
-                        <span class="editable-date cursor-pointer text-orange-600 _underline"
-                              data-id="${b.id}" data-field="warm_date"
-                              data-locked="${(b.status === 'open' || b.status === 'closed') ? 'false' : 'true'}">
-                          ${b.warm_date || '-'}
-                        </span>
-                      </div>
-                    </td>
+<!-- 📱 Mobile cards -->
+<div class="grid grid-cols-1 gap-3 md:hidden">
+  ${bales.map(b => `
+    <div class="border rounded-lg p-3 bg-white dark:bg-gray-800 shadow-sm 
+                hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+      <div class="flex justify-between mb-1">
+              <span class="font-semibold text-sm">#${b.id}</span>
 
+      <div class="flex justify-between gap-x-1">
+        ${b.status ? `<span class='px-2 py-1 text-xs rounded ${b.status === 'open' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}'>${b.status === 'open' ? 'Öppen' : 'Stängd'}</span>` : ''}
+        ${b.is_bad ? `<span class='px-2 py-1 text-xs rounded bg-red-100 text-red-800'>Felaktig</span>` : ''}
+        ${b.is_reimbursed ? `<span class='px-2 py-1 text-xs rounded bg-yellow-100 text-yellow-800'>Ersatt</span>` : ''}
+       
+        </div>
+      </div>
 
+      <div class="text-xs mb-1">
+      
+        <!-- ${b.is_bad ? `<span class='px-2 py-1 rounded bg-red-100 text-red-800'>Felaktig</span>` : ''}
+         ${b.is_reimbursed ? `<span class='px-2 py-1 rounded bg-yellow-100 text-yellow-800'>Ersatt</span>` : ''} -->
+      </div>
 
-              <td class="p-2 text-center">${days}</td>
-              <td class="p-2 text-center">
-                ${b.photo
-        ? `<div class="flex items-center gap-1 justify-center">
-                       <a href="${b.photo}" target="_blank" class="text-blue-600 _underline">Visa bild</a>
-                       <button onclick="deletePhoto(${b.id})" class="text-red-600 hover:text-red-800 text-sm" title="Ta bort bild">🗑️</button>
-                     </div>`
-        : `<button onclick="uploadPhoto(${b.id})" class="px-2 py-1 _border rounded text-xs bg-gray-200 dark:bg-blue-700 dark:hover:bg-blue-600">Ladda upp</button>`}
-              </td>
-              <td class="p-2 flex flex-wrap gap-1 justify-center">
-                <button onclick="setStatus(${b.id}, 'open')" class="px-2 py-1 rounded text-xs bg-gray-200 dark:bg-blue-700 dark:hover:bg-blue-600">Öppen</button>
-                <button onclick="setStatus(${b.id}, 'closed')" class="px-2 py-1 rounded text-xs bg-gray-200 dark:bg-blue-700 dark:hover:bg-blue-600">Stängd</button>
-                <button onclick="toggleFlag(${b.id}, 'is_bad', ${b.is_bad ? 0 : 1})" class="px-2 py-1 rounded text-xs bg-gray-200 dark:bg-blue-700 dark:hover:bg-blue-600">Felaktig</button>
-                <button onclick="toggleFlag(${b.id}, 'is_reimbursed', ${b.is_reimbursed ? 0 : 1})" class="px-2 py-1 rounded text-xs bg-gray-200 dark:bg-blue-700 dark:hover:bg-blue-600">Ersatt</button>
-              </td>
-              <td class="p-2 warm-risk" data-bale="${b.id}">–</td>
+      <div class="space-y-1 text-sm">
+        <div><b>Öppnad:</b> 
+          <span class="editable-date cursor-pointer text-blue-600" 
+                data-id="${b.id}" data-field="open_date"
+                data-locked="${(b.status === 'open' || b.status === 'closed') ? 'false' : 'true'}">
+            ${b.open_date || '-'}
+          </span>
+        </div>
+        <div><b>Stängd:</b> 
+          <span class="editable-date cursor-pointer text-blue-600" 
+                data-id="${b.id}" data-field="close_date"
+                data-locked="${(b.status === 'open' || b.status === 'closed') ? 'false' : 'true'}">
+            ${b.close_date || '-'}
+          </span>
+        </div>
+        <div><b>Varm:</b> 
+          <span class="editable-date cursor-pointer text-orange-600" 
+                data-id="${b.id}" data-field="warm_date"
+                data-locked="${(b.status === 'open' || b.status === 'closed') ? 'false' : 'true'}">
+            ${b.warm_date || '-'}
+          </span>
+        </div>
+        <div><b>Dagar:</b> ${(() => {
+    if (!b.open_date) return '-';
+    const d1 = new Date(b.open_date);
+    const d2 = b.close_date ? new Date(b.close_date) : new Date();
+    return Math.floor((d2 - d1) / (1000 * 60 * 60 * 24)) + ' dagar';
+})()}</div>
 
-            </tr>
-          `;
-}).join('')}
-      </tbody>
-    </table>
+        <div class="flex items-center gap-1 mt-2">
+          ${b.photo
+    ? `<a href="${b.photo}" target="_blank" class="text-blue-600 text-xs underline">Visa bild</a>
+               <button onclick="deletePhoto(${b.id})" 
+                       class="text-red-600 hover:text-red-800 text-xs">🗑️</button>`
+    : `<button onclick="uploadPhoto(${b.id})" 
+                       class="text-xs bg-gray-200 dark:bg-blue-700 px-2 py-1 rounded">📷 Ladda upp</button>`
+}
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-1 justify-end mt-2">
+        <button onclick="setStatus(${b.id}, 'open')" 
+                class="px-2 py-1 text-xs bg-gray-200 dark:bg-blue-700 rounded">Öppen</button>
+        <button onclick="setStatus(${b.id}, 'closed')" 
+                class="px-2 py-1 text-xs bg-gray-200 dark:bg-blue-700 rounded">Stängd</button>
+        <button onclick="toggleFlag(${b.id}, 'is_bad', ${b.is_bad ? 0 : 1})" 
+                class="px-2 py-1 text-xs bg-gray-200 dark:bg-blue-700 rounded">Felaktig</button>
+        <button onclick="toggleFlag(${b.id}, 'is_reimbursed', ${b.is_reimbursed ? 0 : 1})" 
+                class="px-2 py-1 text-xs bg-gray-200 dark:bg-blue-700 rounded">Ersatt</button>
+      </div>
+    </div>
+  `).join('')}
+</div>
+
   </div>
 `;
 

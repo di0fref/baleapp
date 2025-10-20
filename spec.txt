@@ -1,0 +1,30 @@
+
+
+
+
+	i need a filter on statuses
+	show number of bales left and how many is bad on the delivery list
+	add invouce number to a delivery that can be edited later and and a status for payed as well
+
+	on the bales list, show only theh date when it was opened
+
+
+
+
+	1. a list of deliveries where i can add a new delivery win supplier, date and an invoice number and number of bales
+	2. add invouce number to a delivery that can be edited later and and a status for payed as well
+	3. use sqlite
+	4. use tailwindcss
+	5. make it responsive, no side scrollling on small devices
+	6. when adding a delivery, create all bales linked to the particular delivery
+	7. when clicking on a delivery take me to a list of bales for the delivery
+	8. i need to be able to mark bale as open, closed, reimpursed and bad. Make badges of these
+	9. use javascript when nessecary, eg. ajax
+	10. on the deliverylist table show number of bales in total, left and bad
+	11. when marking a bale as open, set the open date
+	12. add a counter from when the bale was open until "now" and lock it when marked as closed
+	13. i need to be able to edit the opened and closed date on a bale
+	14. Secure the app.api
+	15. Separate views for deliveries and bales
+	16. Need to set warm date
+	17.
