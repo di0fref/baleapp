@@ -73,12 +73,19 @@ const Templates = {
                 class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded">
           Visa balar →
         </button>
-        ${d.invoice_file
-        ? `<a href="${d.invoice_file}" target="_blank" 
-                 class="text-xs bg-gray-200 dark:bg-blue-700 px-2 py-1 rounded">Faktura</a>`
+        
+${d.invoice_file
+        ? `<div class="flex items-center gap-1">
+        <a href="${d.invoice_file}" target="_blank" 
+           class="text-xs bg-gray-200 dark:bg-blue-700 px-2 py-1 rounded">📄 Visa</a>
+        <button onclick="deleteInvoice(${d.id})"
+                class="text-xs text-red-600 hover:text-red-800">🗑️</button>
+     </div>`
         : `<button onclick="uploadInvoice(${d.id})"
-                     class="text-xs bg-gray-200 dark:bg-blue-700 px-2 py-1 rounded">📎</button>`
+             class="text-xs bg-gray-200 dark:bg-blue-700 px-2 py-1 rounded">📎</button>`
     }
+
+
         <label class="flex items-center gap-1 text-xs">
           <input type="checkbox" ${d.paid ? 'checked' : ''} 
                  onchange="updateDelivery(${d.id}, this.checked?1:0)">
