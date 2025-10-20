@@ -10,16 +10,22 @@ $db->exec("PRAGMA foreign_keys = ON;");
 
 // === LOGIN / LOGOUT / AUTH CHECK =================================
 
-// 🔹 Login
 if (isset($_POST['action']) && $_POST['action'] === 'login') {
     $username = trim($_POST['username'] ?? '');
     $password = trim($_POST['password'] ?? '');
 
-    $st = $db->prepare("SELECT * FROM users WHERE username=? AND password=?");
-    $st->execute([$username, $password]);
+
+    $st = $db->prepare("SELECT * FROM users WHERE username=?");
+    $st->execute([$username]);
     $usr = $st->fetch(PDO::FETCH_ASSOC);
 
-    if ($usr) {
+
+    error_log(password_hash($password, PASSWORD_DEFAULT));
+    error_log($usr['password']);;;
+
+
+
+    if ($usr && password_verify($_POST['password'], $usr['password'])) {
         $_SESSION['user'] = $usr['username'];
         setcookie('hayuser', $usr['username'], time() + 86400 * 30, "/");
         echo json_encode(['success' => true]);
@@ -167,28 +173,16 @@ if (file_exists($cacheFile) && time() - filemtime($cacheFile) < 10800) {
 
 /* === Standardanvändare === */
 if (!$db->query("SELECT COUNT(*) FROM users")->fetchColumn()) {
-    $db->exec("INSERT INTO users(username,password)VALUES('Erika','Erika')");
-    $db->exec("INSERT INTO users(username,password)VALUES('Fredrik','Fredrik')");
-}
+    $hash1 = password_hash('Erika', PASSWORD_DEFAULT);
+    $hash2 = password_hash('bales', PASSWORD_DEFAULT);
+    $db->prepare("INSERT INTO users(username,password)VALUES(?,?)")->execute(['Erika', $hash1]);
+    $db->prepare("INSERT INTO users(username,password)VALUES(?,?)")->execute(['sweet', $hash2]);
 
-/* === Login === */
-if (isset($_POST['login_user'], $_POST['login_pass'])) {
-    $stmt = $db->prepare("SELECT * FROM users WHERE username=? AND password=?");
-    $stmt->execute([$_POST['login_user'], $_POST['login_pass']]);
-    $usr = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($usr) {
-        $_SESSION['user'] = $usr['username'];
-        setcookie('hayuser', $usr['username'], time() + 86400 * 30, "/");
-        header("Location: index.php");
-        exit;
-    } else {
-        echo "<p>Fel användarnamn eller lösenord.</p>";
-        exit;
-    }
 }
 
 /* === Logout === */
 if (isset($_GET['logout'])) {
+    $_SESSION = [];
     session_destroy();
     setcookie('hayuser', '', time() - 3600, '/');
     echo json_encode(['success' => true]);

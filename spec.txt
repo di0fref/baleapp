@@ -11,20 +11,24 @@
 
 
 
-	1. a list of deliveries where i can add a new delivery win supplier, date and an invoice number and number of bales
-	2. add invouce number to a delivery that can be edited later and and a status for payed as well
-	3. use sqlite
-	4. use tailwindcss
-	5. make it responsive, no side scrollling on small devices
-	6. when adding a delivery, create all bales linked to the particular delivery
-	7. when clicking on a delivery take me to a list of bales for the delivery
-	8. i need to be able to mark bale as open, closed, reimpursed and bad. Make badges of these
-	9. use javascript when nessecary, eg. ajax
-	10. on the deliverylist table show number of bales in total, left and bad
-	11. when marking a bale as open, set the open date
-	12. add a counter from when the bale was open until "now" and lock it when marked as closed
-	13. i need to be able to edit the opened and closed date on a bale
-	14. Secure the app.api
+	1. A list of deliveries where I can add a new delivery with supplier, date and an invoice number and number of bales
+	2. Add an invoice number to a delivery that can be edited later and and a status for payed as well
+	3. Use sqlite
+	4. Use tailwindcss
+	5. Make it responsive, no side scrolling on small devices eg. cards
+	6. When adding a delivery, create all bales linked to the particular delivery
+	7. When clicking on a delivery takes me to a list of bales for the delivery
+	8. I need to be able to mark bale as open, closed, reimbursed and bad. Make badges of these
+	9. Use JavaScript when necessary, eg. Ajax
+	10. On the deliverylist table shows the number of bales in total, left and bad
+	11. When marking a bale as open, set the open date
+	12. Add a counter from when the bale was open until "now" and lock it when marked as closed
+	13. I need to be able to edit the opened and closed date on a bale
+	14. All dates should be inline editable
 	15. Separate views for deliveries and bales
-	16. Need to set warm date
-	17.
+	16. Need to set a warm date
+	17. users/roles, regular/admin
+	18. Auto migrate
+	19. Hash password
+	20. A bale cannot be open and closed at the same time
+	21. A bale can be bad and reimbursed at the same time asl well acl closed or open

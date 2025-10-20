@@ -1,11 +1,11 @@
 [x] 1. smhi weather predictions
 []  2. Secure api.php
-[]  3. Fix responsiveness
-[]  4. Port to framework
+[x]  3. Fix responsiveness
+[]  4. Port to react
 
 
 
 Cron jobs
 
 0 7 * * * /usr/local/bin/php /home/s6411/fahlstad.se/hay/haybale_cron.php >/dev/null 2>&1
-0 6 * * 1 /usr/local/bin/php /home/s6411/fahlstad.se/hay/phpanalyze_warm_prediction.php >/dev/null 2>&1
+0 6 * * 1 /usr/local/bin/php /home/s6411/fahlstad.se/hay/analyze_warm_risk.php >/dev/null 2>&1
