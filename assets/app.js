@@ -143,6 +143,37 @@ async function toggleFlag(baleId, flag, value) {
     await postAction('toggle_flag', { id: baleId, flag, value });
     App.loadDelivery(App.currentDelivery);
 }
+function toggleDropdown(btn, event) {
+    event?.stopPropagation();
+    const menu = btn.nextElementSibling;
+    const isOpen = !menu.classList.contains('hidden');
+
+    // Close all other open dropdowns first
+    document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.add('hidden'));
+
+    if (!isOpen) {
+        menu.classList.remove('hidden');
+    }
+
+    // Handle outside clicks
+    const closeMenu = (e) => {
+        if (!menu.contains(e.target) && e.target !== btn) {
+            menu.classList.add('hidden');
+            document.removeEventListener('click', closeMenu);
+        }
+    };
+
+    document.addEventListener('click', closeMenu);
+
+    // Prevent clicks inside the dropdown from closing all menus
+    menu.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // close the current menu only after executing the action
+        setTimeout(() => menu.classList.add('hidden'), 100);
+    });
+}
+
+
 
 // === Templates (måste redan vara laddade via assets/templates.js) ===
 // Templates.loader

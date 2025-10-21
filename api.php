@@ -20,9 +20,6 @@ if (isset($_POST['action']) && $_POST['action'] === 'login') {
     $usr = $st->fetch(PDO::FETCH_ASSOC);
 
 
-    error_log(password_hash($password, PASSWORD_DEFAULT));
-    error_log($usr['password']);;;
-
 
 
     if ($usr && password_verify($_POST['password'], $usr['password'])) {

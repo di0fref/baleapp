@@ -151,16 +151,37 @@ Templates.baleRow = b => `
     : `<button onclick="uploadPhoto(${b.id})"
                    class="text-xs bg-gray-200 dark:bg-blue-700 px-2 py-1 rounded">📷</button>`}
     </td>
-    <td class="p-2 flex flex-wrap gap-1 justify-center">
-      <button onclick="setStatus(${b.id}, 'open')"
-              class="px-2 py-1 text-xs bg-gray-200 dark:bg-blue-700 rounded">Öppen</button>
-      <button onclick="setStatus(${b.id}, 'closed')"
-              class="px-2 py-1 text-xs bg-gray-200 dark:bg-blue-700 rounded">Stängd</button>
-      <button onclick="toggleFlag(${b.id}, 'is_bad', ${b.is_bad ? 0 : 1})"
-              class="px-2 py-1 text-xs bg-gray-200 dark:bg-blue-700 rounded">Felaktig</button>
-      <button onclick="toggleFlag(${b.id}, 'is_reimbursed', ${b.is_reimbursed ? 0 : 1})"
-              class="px-2 py-1 text-xs bg-gray-200 dark:bg-blue-700 rounded">Ersatt</button>
-    </td>
+<td class="p-2 text-center relative">
+  <div class="inline-block text-left">
+<button onclick="toggleDropdown(this, event)" 
+        class="px-2 py-1 text-xs bg-gray-200 dark:bg-blue-700 rounded">
+  ⚙️ Åtgärder ▾
+</button>
+
+
+    <div class="hidden absolute right-0 mt-1 w-32 bg-white dark:bg-gray-800 border 
+                border-gray-300 dark:border-gray-600 rounded shadow-lg z-10">
+      <button onclick="setStatus(${b.id}, 'open')" 
+              class="block w-full text-left px-2 py-1 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">
+        ${b.status === 'open' ? 'Ta bort öppnad' : 'Öppen'}
+      </button>
+      <button onclick="setStatus(${b.id}, 'closed')" 
+              class="block w-full text-left px-2 py-1 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">
+        ${b.status === 'closed' ? 'Ta bort stängd' : 'Stängd'}
+      </button>
+      <button onclick="toggleFlag(${b.id}, 'is_bad', ${b.is_bad ? 0 : 1})" 
+              class="block w-full text-left px-2 py-1 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">
+        ${b.is_bad ? 'Ta bort felaktig' : 'Felaktig'}
+      </button>
+      <button onclick="toggleFlag(${b.id}, 'is_reimbursed', ${b.is_reimbursed ? 0 : 1})" 
+              class="block w-full text-left px-2 py-1 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">
+        ${b.is_reimbursed ? 'Ta bort ersatt' : 'Ersatt'}
+      </button>
+
+    </div>
+  </div>
+</td>
+
     <td class="p-2 warm-risk" data-bale="${b.id}">–</td>
   </tr>
 `;
