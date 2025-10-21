@@ -126,7 +126,10 @@ ensureColumn($db, 'bales', 'opened_by', 'TEXT');
 ensureColumn($db, 'bales', 'closed_by', 'TEXT');
 ensureColumn($db, 'bales', 'marked_bad_by', 'TEXT');
 ensureColumn($db, 'bales', 'reimbursed_date', 'TEXT');
-ensureColumn($db, 'bales', 'warm_date', 'TEXT');
+ensureColumn($db, 'bales', 'warm_date', 'REAL');
+ensureColumn($db, 'bales', 'warm_pred_date', 'TEXT');
+ensureColumn($db, 'bales', 'temp', 'TEXT');
+
 
 function getSmhiForecast($lat = 58.4, $lon = 15.6)
 {
@@ -197,28 +200,30 @@ $a = $_POST['action'];
 $user = $_SESSION['user'] ?? 'okänd';
 
 if ($a === 'get_warm_risk') {
-    $avgTempForecast = $model ? getSmhiForecast(58.4, 15.6) : null;
-    $riskList = [];
+    $modelFile = __DIR__ . '/warm_model.json';
+    $model = file_exists($modelFile) ? json_decode(file_get_contents($modelFile), true) : null;
+    if (!$model) exit(json_encode(['success'=>false]));
 
-    if ($model && $avgTempForecast !== null) {
-        $rows = $db->query("SELECT id, delivery_id, open_date FROM bales WHERE status='open' AND warm_date IS NULL")->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($rows as $r) {
-            if (!$r['open_date']) {
-                continue;
-            }
-            $predDays = round($model['a'] + $model['b'] * $avgTempForecast, 1);
-            if ($predDays > 0 && $predDays < 15) {
-                $predDate = (new DateTime($r['open_date']))->add(new DateInterval('P' . ceil($predDays) . 'D'))->format('Y-m-d');
-                $riskList[] = [
-                    'bale_id' => $r['id'],
-                    'pred_days' => $predDays,
-                    'pred_date' => $predDate
-                ];
-            }
-        }
+    $cacheFile = __DIR__ . '/smhi_cache.json';
+    if (file_exists($cacheFile) && time() - filemtime($cacheFile) < 10800) {
+        $avgTemp = json_decode(file_get_contents($cacheFile), true)['temp'];
+    } else {
+        $avgTemp = getSmhiForecast(58.4, 15.6); // Karlstad fallback
+        file_put_contents($cacheFile, json_encode(['temp'=>$avgTemp,'ts'=>time()]));
     }
 
-    echo json_encode(['success' => true, 'data' => $riskList]);
+    $predDays = round($model['a'] + $model['b'] * $avgTemp, 1);
+    $predDate = date('Y-m-d', strtotime("+$predDays days"));
+
+    $data = $db->query("SELECT id AS bale_id FROM bales WHERE status='open'")
+        ->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($data as &$d) {
+        $d['pred_days'] = $predDays;
+        $d['pred_date'] = $predDate;
+    }
+
+    echo json_encode(['success'=>true,'data'=>$data]);
     exit;
 }
 
@@ -314,19 +319,18 @@ if ($a === 'update_bale_status') {
     $id = (int)$_POST['id'];
     $s = $_POST['status'];
     $current = $db->query("SELECT status FROM bales WHERE id=$id")->fetchColumn();
-
+    $now = date('Y-m-d');
     if ($s === 'open') {
         if ($current === 'open') {
             // 🔁 Toggle OFF — clear open status, date, and user
             $db->prepare("UPDATE bales 
-                          SET status=NULL, open_date=NULL, opened_by=NULL 
+                          SET status=NULL, open_date=NULL, opened_by=NULL , temp=NULL
                           WHERE id=?")->execute([$id]);
         } else {
             // ✅ Mark as OPEN
-            $db->prepare("UPDATE bales 
-                          SET status='open', open_date=COALESCE(open_date, date('now')), 
-                              close_date=NULL, closed_by=NULL, opened_by=? 
-                          WHERE id=?")->execute([$user, $id]);
+            $temp = getSmhiForecast(58.4, 15.6); // your coordinates
+            $db->prepare("UPDATE bales SET status='open', open_date=?, temp=? WHERE id=?")
+                ->execute([$now, $temp, $id]);
         }
     } elseif ($s === 'closed') {
         if ($current === 'closed') {
@@ -399,6 +403,9 @@ if ($a === 'update_date') {
             echo json_encode(['success' => false]);
             exit;
         }
+    }
+    if ($f === 'warm_date') {
+        exec("php ai_warm_pred.php > /dev/null 2>&1 &");
     }
 
     $stmt = $db->prepare("UPDATE bales SET $f = ? WHERE id = ?");

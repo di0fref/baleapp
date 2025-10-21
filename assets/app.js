@@ -389,10 +389,12 @@ async function loadWarmRisks(){
 
     j.data.forEach(risk=>{
         const el = document.querySelector(`[data-bale="${risk.bale_id}"] .warm-risk`);
-        if(el){
-            el.textContent = `🔥 Risk om ~${risk.pred_days} dagar (${risk.pred_date})`;
-            el.classList.add('text-orange-600','text-xs');
+        if (el) {
+            el.innerHTML = `🔥 <span class="text-orange-600 font-semibold">${risk.pred_days}</span> dagar (${risk.pred_date})`;
+            el.title = `Risk baserad på temperatur & historik`;
+            el.classList.add('text-xs');
         }
+
     });
 }
 function initLogin() {
