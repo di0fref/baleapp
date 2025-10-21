@@ -8,5 +8,4 @@
 Cron jobs
 
 0 7 * * * /usr/local/bin/php /home/s6411/fahlstad.se/hay/haybale_cron.php >/dev/null 2>&1
-0 6 * * 1 /usr/local/bin/php /home/s6411/fahlstad.se/hay/analyze_warm_risk.php >/dev/null 2>&1
 0 6 * * * /usr/local/bin/php /home/s6411/fahlstad.se/hay/ai_warm_pred.php >/dev/null 2>&1

@@ -199,7 +199,7 @@ Templates.login = `
 Templates.deliveryDetail = (delivery, bales) => `
   <div class="bg-white dark:bg-gray-800 p-4 rounded shadow mb-6">
     <div class="my-2">
-      <a href="#/" class="text-blue-600 hover:underline">&larr; Tillbaka</a>
+<a href="/" onclick="event.preventDefault(); history.back();" class="text-blue-600 hover:underline">&larr; Tillbaka</a>
     </div>
 
     <div class="bg-gray-100 dark:bg-gray-700 p-4 rounded mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -47,7 +47,7 @@ async function postAction(action, data = {}) {
     const fd = new FormData();
     fd.append('action', action);
     for (const [k, v] of Object.entries(data)) fd.append(k, v);
-    const r = await fetch('api.php', { method: 'POST', body: fd });
+    const r = await fetch('/api.php', { method: 'POST', body: fd });
     return r.json();
 }
 
@@ -97,7 +97,7 @@ async function uploadInvoice(id) {
         fd.append('action', 'upload_invoice_file');
         fd.append('id', id);
         fd.append('invoice_file', f);
-        const r = await fetch('api.php', { method: 'POST', body: fd });
+        const r = await fetch('/api.php', { method: 'POST', body: fd });
         const j = await r.json();
         if (j.success) App.loadDeliveries();
     };
@@ -117,7 +117,7 @@ async function uploadPhoto(baleId) {
         fd.append('action', 'upload_photo');
         fd.append('id', baleId);
         fd.append('photo', f);
-        const r = await fetch('api.php', { method: 'POST', body: fd });
+        const r = await fetch('/api.php', { method: 'POST', body: fd });
         const j = await r.json();
         if (j.success) { showToast('📷 Bild uppladdad'); App.loadDelivery(App.currentDelivery); }
     };
@@ -190,7 +190,8 @@ const App = {
         const j = await postAction('list_deliveries');
         if (!j.success) return showToast('Kunde inte hämta leveranser', 'error');
         this.el.innerHTML = Templates.deliveriesTable(j.deliveries);
-        history.pushState({ view: 'deliveries' }, '', '#/');
+        history.pushState({ view: 'deliveries' }, '', '/');
+
         await checkNotifications();
     },
 
@@ -200,15 +201,21 @@ const App = {
         if (!j.success) return showToast('Kunde inte hämta leverans', 'error');
         this.currentDelivery = id;
         this.el.innerHTML = Templates.deliveryDetail(j.delivery, j.bales);
-        history.pushState({ view: 'delivery', id }, '', `#/delivery/${id}`);
+        history.replaceState({ view: 'delivery', id }, '', `/delivery/${id}`);
     }
 };
 
-// === Global (hash) navigation ===
-window.onpopstate = e => {
-    if (!e.state || e.state.view === 'deliveries') App.loadDeliveries();
-    else if (e.state.view === 'delivery') App.loadDelivery(e.state.id);
+// === Global navigation ===
+window.onpopstate = (e) => {
+    const state = e.state || {};
+    if (state.view === 'delivery' && state.id) {
+        App.loadDelivery(state.id);
+    } else {
+        App.loadDeliveries();
+    }
 };
+
+
 
 // === Event DELEGERING på #app ===
 document.addEventListener('DOMContentLoaded', () => {
@@ -307,7 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         fd.append('action', 'add_delivery');
-        const r = await fetch('api.php', { method: 'POST', body: fd });
+        const r = await fetch('/api.php', { method: 'POST', body: fd });
         const j = await r.json();
         if (j.success) {
             showToast('✅ Leverans tillagd');
@@ -326,7 +333,7 @@ document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     if (!confirm('Logga ut?')) return;
 
     try {
-        const r = await fetch('api.php?logout');
+        const r = await fetch('/api.php?logout');
         const text = await r.text();
         let j = {};
         try {
@@ -383,7 +390,7 @@ async function checkNotifications() {
 async function loadWarmRisks(){
     const fd = new FormData();
     fd.append('action','get_warm_risk');
-    const r = await fetch('api.php', {method:'POST', body:fd});
+    const r = await fetch('/api.php', {method:'POST', body:fd});
     const j = await r.json();
     if(!j.success) return;
 
@@ -404,7 +411,7 @@ function initLogin() {
         e.preventDefault();
         const fd = new FormData(form);
         fd.append('action', 'login');
-        const r = await fetch('api.php', { method: 'POST', body: fd });
+        const r = await fetch('/api.php', { method: 'POST', body: fd });
         const j = await r.json();
         if (j.success) {
             toggleTopNav(true);
@@ -426,7 +433,7 @@ document.addEventListener('DOMContentLoaded', loadWarmRisks);
 document.addEventListener('DOMContentLoaded', async () => {
     // Check login state before loading anything
     try {
-        const r = await fetch('api.php?action=check_login');
+        const r = await fetch('/api.php?action=check_login');
         const j = await r.json();
 
         if (!j.logged_in) {
@@ -439,8 +446,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 🟢 Logged in → show app
         toggleTopNav(true);
-        App.loadDeliveries();
-        checkNotifications();
+
+        const { view, deliveryId } = window.initialView || {};
+
+        console.log(JSON.stringify(window.initialView, null, 2))
+
+        if (view === 'delivery' && deliveryId) {
+            await App.loadDelivery(deliveryId);
+        } else {
+            await App.loadDeliveries();
+        }
+
+        // App.loadDeliveries();
+        await checkNotifications();
         setInterval(checkNotifications, 600000);
     } catch (err) {
         console.error(err);
